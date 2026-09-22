@@ -150,6 +150,20 @@
     return `${col.week}\n(${dd}/${mm})`;
   }
 
+  // Display labels for the Indicador column. The internal names stay as
+  // the data — cellForName and the colour logic both key on
+  // 'situacao_rec' — so this maps only at render time. The CSV keeps the
+  // machine names, which is what R analysis reads.
+  const INDICADOR_LABEL = {
+    criticas_informativas: 'Críticas informativas',
+    criticas_comparativas: 'Críticas comparativas',
+    situacao_rec: 'Situação',
+  };
+
+  function indicadorLabel(name) {
+    return INDICADOR_LABEL[name] || name;
+  }
+
   // Colours only the situacao_rec row — críticas rows hold plain counts,
   // same as the Excel colour-codes only its situação row.
   function renderMunicipioTab(grid, columns) {
@@ -175,7 +189,7 @@
       el('td', { text: line.agencia_nome }),
       el('td', { text: line.municipio_nome }),
       el('td', { text: line.questionario }),
-      el('td', { text: line.name }),
+      el('td', { text: indicadorLabel(line.name) }),
       ...line.cells.map((cell) => el('td', {
         text: cell === null ? '—' : cell,
         class: cell === null
@@ -636,6 +650,7 @@
   window.__municProSituacaoReportInternals = {
     onSituacaoPage,
     buildActions,
+    indicadorLabel,
     showPane,
     paneRoot,
     makeButton,

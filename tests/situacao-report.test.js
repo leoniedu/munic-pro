@@ -151,9 +151,9 @@ describe('renderMunicipioTab', () => {
 
   test('shows the name of each indicator row', () => {
     const el = R.renderMunicipioTab(grid, columns);
-    expect(el.textContent).toContain('criticas_informativas');
-    expect(el.textContent).toContain('criticas_comparativas');
-    expect(el.textContent).toContain('situacao_rec');
+    expect(el.textContent).toContain('Críticas informativas');
+    expect(el.textContent).toContain('Críticas comparativas');
+    expect(el.textContent).toContain('Situação');
   });
 
   // The header carries the real run date, so a stale column cannot be
@@ -177,7 +177,7 @@ describe('renderMunicipioTab', () => {
     const el = R.renderMunicipioTab(grid, columns);
     expect(el.querySelector('.munic-pro-nao-iniciado')).toBeTruthy();
     const rows = [...el.querySelectorAll('tbody tr')];
-    const criticasRow = rows.find((tr) => tr.textContent.includes('criticas_informativas'));
+    const criticasRow = rows.find((tr) => tr.textContent.includes('Críticas informativas'));
     expect(criticasRow.querySelector('.munic-pro-nao-iniciado')).toBeNull();
     expect(criticasRow.querySelector('.munic-pro-digitacao')).toBeNull();
   });
@@ -185,7 +185,7 @@ describe('renderMunicipioTab', () => {
   test('críticas cells show plain numbers', () => {
     const el = R.renderMunicipioTab(grid, columns);
     const rows = [...el.querySelectorAll('tbody tr')];
-    const criticasRow = rows.find((tr) => tr.textContent.includes('criticas_informativas'));
+    const criticasRow = rows.find((tr) => tr.textContent.includes('Críticas informativas'));
     expect(criticasRow.textContent).toContain('51');
   });
 
@@ -1083,5 +1083,49 @@ describe('percentage tabs render percentages, not counts', () => {
   test('a raw count is never shown as a percentage', () => {
     const el = R.renderGroupTab(counts, columns, R.fmtPct, 'pctCells');
     expect(el.textContent).not.toContain('1800');
+  });
+});
+
+describe('Indicador column labels', () => {
+  // The column showed the R package's internal field names
+  // (situacao_rec, criticas_informativas), which read as a database dump.
+  // The internal name stays as the DATA — cellForName and the colour
+  // logic key on it — so this maps at render time only.
+  test('maps internal names to readable Portuguese', () => {
+    expect(R.indicadorLabel('situacao_rec')).toBe('Situação');
+    expect(R.indicadorLabel('criticas_informativas'))
+      .toBe('Críticas informativas');
+    expect(R.indicadorLabel('criticas_comparativas'))
+      .toBe('Críticas comparativas');
+  });
+
+  test('an unknown name passes through unchanged', () => {
+    expect(R.indicadorLabel('algo_novo')).toBe('algo_novo');
+  });
+
+  test('the rendered cell shows the label, not the field name', () => {
+    const line = {
+      key: 'k', municipio_codigo: '1', municipio_nome: 'M',
+      agencia_codigo: '290070200', agencia_nome: 'AG',
+      questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
+    };
+    const el = R.renderMunicipioTab(
+      [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+    const tds = [...el.querySelectorAll('tbody td')].map((t) => t.textContent);
+    expect(tds).toContain('Situação');
+    expect(tds).not.toContain('situacao_rec');
+  });
+
+  // Colouring keys on the internal name, not the label — a rename of the
+  // label must not silently stop colouring the situação row.
+  test('the situação row is still coloured after relabelling', () => {
+    const line = {
+      key: 'k', municipio_codigo: '1', municipio_nome: 'M',
+      agencia_codigo: '290070200', agencia_nome: 'AG',
+      questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
+    };
+    const el = R.renderMunicipioTab(
+      [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+    expect(el.querySelector('.munic-pro-concluido')).toBeTruthy();
   });
 });
