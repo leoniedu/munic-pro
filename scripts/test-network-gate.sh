@@ -85,4 +85,16 @@ fixture extension/features/situacao-store/zz-gate-test.js \
   "indexedDB.open('munic-pro', 1);"
 expect_pass "indexedDB in the storage-sanctioned directory"
 
+# Built at runtime, not written as a literal in this file's own source —
+# otherwise this very script would trip the gate it is testing.
+STORE_HOST_A=$(printf '%s' 'chromewebstoreXgoogleXcomZdetailZabc' | tr XZ ./)
+fixture docs/zz-gate-test.html \
+  "<a href='https://${STORE_HOST_A}'>install</a>"
+expect_fail "unlisted Chrome Web Store URL (chromewebstore host) anywhere in repo"
+
+STORE_HOST_B=$(printf '%s' 'chromeXgoogleXcomZwebstoreZdetailZabc' | tr XZ ./)
+fixture README-zz-gate-test.md \
+  "See https://${STORE_HOST_B}"
+expect_fail "unlisted Chrome Web Store URL (chrome.google.com/webstore host) anywhere in repo"
+
 echo "network gate self-test: PASS"

@@ -1,0 +1,161 @@
+# Chrome Web Store listing draft
+
+## Short description (max 132 chars)
+
+```
+Histórico não oficial da coleta MUNIC 2026 (IBGE) por município, semana a semana — guardado só no seu navegador.
+```
+(112 chars — limit is 132)
+
+## Detailed description
+
+```
+MUNIC-PRO adiciona três botões azuis à página do SIGC "Situação das
+Prefeituras, com Críticas da UF" (SIGC MUNIC 2026, IBGE), ao lado dos
+botões nativos — que não são alterados.
+
+O PROBLEMA: o SIGC mostra apenas a situação ATUAL da coleta. A cada
+atualização, o valor anterior é sobrescrito — não há como ver o que mudou
+desde a semana passada, nem acompanhar o ritmo de cada agência ao longo
+do tempo. Esta extensão guarda o que o SIGC não guarda.
+
+• Relatório-PRO — consulta a situação atual de toda a UF (uma requisição
+  ao próprio servidor do SIGC) — a menos que a fotografia mais recente já
+  guardada tenha menos de um minuto, caso em que reaproveita o histórico
+  sem consultar de novo. Guarda uma fotografia datada e abre um painel
+  com cinco abas:
+  - Município — uma linha por município, por questionário (Básico e
+    Suplementar) e por indicador (críticas informativas, críticas
+    comparativas, situação), com uma coluna por semana ISO (a última
+    consulta de cada semana), colorida como no relatório em Excel de
+    2025 que substitui. Semanas sem nenhuma consulta aparecem como
+    lacunas visíveis — não são preenchidas com o valor mais próximo.
+  - Assistência e Assistência % — os mesmos municípios agrupados por
+    assistência (agrupamento fixo, embutido na extensão, para os
+    municípios da Bahia: 50 agências em 6 assistências), em contagem e
+    em percentual.
+  - Agência e Agência % — o mesmo, agrupado por agência.
+  Todas as tabelas têm ordenação, paginação, busca geral e um filtro por
+  coluna, usando o jQuery/DataTables que a própria página do SIGC já
+  carrega — nada é baixado ou embutido para isso.
+• CSV-PRO — exporta uma linha por município por consulta (separador
+  `;`, com BOM, pronto para o Excel brasileiro).
+• Backup JSON — exporta o histórico completo guardado, como cópia de
+  segurança.
+
+O histórico é guardado como SCD tipo 2 no IndexedDB do navegador: uma
+linha por combinação de município/questionário/indicador, com as datas
+em que cada estado começou e terminou a valer. Um município que não muda
+de uma consulta para outra não custa nada a mais para guardar, por mais
+vezes que a extensão seja usada.
+
+PRIVACIDADE: não há nenhum recurso externo nesta extensão — nenhuma
+imagem, biblioteca, fonte ou script de fora, nada. A única requisição de
+rede é a consulta do Relatório-PRO, que vai ao próprio servidor do SIGC
+MUNIC 2026 (mesma origem da página, mesma sessão já autenticada do
+usuário), acionada por clique. O histórico e os arquivos exportados
+ficam apenas no seu computador — nada é enviado ao desenvolvedor, e não
+há telemetria. Isso é verificado automaticamente a cada alteração no
+código-fonte (veja o repositório).
+
+AVISO: projeto independente, sem vínculo oficial com o IBGE. Protótipo
+para uso e demonstração à equipe de desenvolvimento do SIGC. Use por sua
+conta e risco.
+
+Código-fonte aberto: https://github.com/leoniedu/munic-pro
+```
+
+## Single purpose (dashboard field)
+
+```
+Adds unofficial tools to the SIGC MUNIC 2026 (IBGE) status report page:
+one button that fetches the current status and keeps a dated history of
+it (a five-tab panel — município, assistência, assistência %, agência,
+agência %), a CSV export of that history, and a full JSON backup of it.
+It requests two browser permissions (storage, downloads) strictly to
+keep that history locally and let the user save it — nothing is
+transmitted anywhere outside the SIGC server the data came from.
+```
+
+## Host permission justification (dashboard field)
+
+Limit: 1000 characters. Current text is 950.
+
+```
+The extension injects a content script only on the SIGC MUNIC 2026 report page, matched by the three specific hosts it is served from — portalweb.ibge.gov.br, portalweb2.ibge.gov.br and w3sigcmunic2026.ibge.gov.br — not the whole ibge.gov.br domain. It adds a "Relatório-PRO" button that keeps a dated history of the report's own status data (the page shows only the current value and overwrites it), plus a CSV export and a JSON backup of that history.
+
+The only network call is one click-triggered POST to the SIGC server itself, same origin, in the user's existing session, fetching the current status for the whole UF (state). No other site is accessed, and there is no external resource of any kind — no CDN, no image, no font, no analytics.
+
+The `storage` and `downloads` permissions (justified separately below) exist solely to keep that history on the user's own machine and let them export it. Nothing is sent to the developer; no telemetry.
+```
+
+## Storage permission justification (dashboard field)
+
+```
+The extension's whole purpose is to keep a history the SIGC portal itself
+does not: the page only ever shows the CURRENT status of each município
+and overwrites it on every update, so there is no way to see what changed
+week to week. The `storage` permission lets the extension use the
+browser's IndexedDB to keep that history locally, as SCD type-2 rows (one
+row per município/questionário/indicator, with the dates each state began
+and ended). This costs nothing extra for a município that never changes,
+however many times the report is run.
+
+This is local storage only — chrome.storage itself is not used. Nothing
+in this history is ever transmitted anywhere: it is read back only to
+render the report panel and to build the CSV/JSON exports, both written
+to files on the user's own machine. Clearing the browser's site data
+deletes this history, which is exactly why the Backup JSON button exists.
+```
+
+## Downloads permission justification (dashboard field)
+
+```
+The `downloads` permission lets the "CSV-PRO" and "Backup JSON" buttons
+save files (a CSV of the stored history, and a full JSON copy of it) to
+the user's own Downloads folder through Chrome's standard download
+mechanism. This is the only use of the permission: both files are built
+in memory from data already in the extension's local IndexedDB and never
+touch the network. The JSON backup exists specifically so the history
+survives even if the browser's stored data is later cleared.
+```
+
+## Data safety / Privacy practices (dashboard form — required to submit)
+
+"Collect" here means Google's definition: **transmitting data off the
+user's machine**. Reading data already on the page, storing it locally in
+IndexedDB, showing it, and saving a file locally are not collection.
+Unlike SIGC-PRO, this extension DOES store data on purpose — the
+collection history is the whole point — but storing locally is not the
+same thing as collecting under this definition, and every answer below is
+still No.
+
+| Data type | Answer | Why |
+|---|---|---|
+| Personally identifiable information | **No** | The report contains no personal data — it is município/agência-level aggregate status (situação, críticas counts), never names, addresses or individuals. |
+| Health information | **No** | Never handled. |
+| Financial and payment information | **No** | Never handled. |
+| Authentication information | **No** | The extension never reads, stores or transmits credentials, cookies or tokens. The one request reuses the page's existing session (`credentials: 'same-origin'`) — the browser attaches the cookie, the extension never sees it. |
+| Personal communications | **No** | Never handled. |
+| Location | **No** | Never handled — this report carries no geographic coordinates. |
+| Web history | **No** | Never handled. |
+| User activity | **No** | No analytics, no telemetry, no click tracking. |
+| Website content | **No** | Município/agência status read from the SIGC page is stored **locally, in the user's own browser (IndexedDB)**, on purpose — that history is the extension's entire function — and exported to files the user saves themselves. It is never transmitted to the developer or to any third party; the only network request sends nothing anywhere, it only reads the current status back from the same SIGC server the data already lives on. |
+
+Required certifications — all three can be affirmed:
+
+- [x] Not being sold to third parties, outside of approved use cases
+- [x] Not being used or transferred for purposes unrelated to the item's core functionality
+- [x] Not being used or transferred to determine creditworthiness or for lending purposes
+
+## Category
+
+Productivity (or "Tools" if available for the target region)
+
+## Privacy policy URL
+
+https://leoniedu.github.io/munic-pro/PRIVACY_POLICY.html
+
+## Store visibility
+
+Unlisted (installable only via direct link, not searchable).

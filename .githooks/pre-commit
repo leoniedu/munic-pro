@@ -29,6 +29,17 @@ EOF
   echo "extension/manifest.json version bumped to $NEW"
 fi
 
+# Keep the GitHub Pages version marker in sync with the (possibly
+# just-bumped) staged manifest version.
+if ! git diff --cached --no-ext-diff --quiet -- extension/; then
+  VER=$(git show :extension/manifest.json | grep '"version"' | sed -E 's/.*"version": *"([0-9.]+)".*/\1/')
+  if [ -n "$VER" ] && grep -qE 'versão [0-9]+\.[0-9]+\.[0-9]+' "$ROOT/docs/index.html"; then
+    sed -i '' -E "s/versão [0-9]+\.[0-9]+\.[0-9]+/versão $VER/" "$ROOT/docs/index.html"
+    git add "$ROOT/docs/index.html"
+    echo "docs/index.html version marker synced to $VER"
+  fi
+fi
+
 # Keep dist/munic-pro-extension.zip in sync: rebuild from the staged content
 # whenever the commit touches extension/, and include it in the same commit.
 if ! git diff --cached --no-ext-diff --quiet -- extension/; then
@@ -37,4 +48,14 @@ if ! git diff --cached --no-ext-diff --quiet -- extension/; then
   git archive --format=zip -o "$ROOT/dist/munic-pro-extension.zip" "$TREE" extension
   git add "$ROOT/dist/munic-pro-extension.zip"
   echo "dist/munic-pro-extension.zip rebuilt from staged extension/"
+
+  # Chrome Web Store upload: manifest.json must sit at the archive root (it
+  # rejects files outside the manifest's own directory), so this zip has no
+  # extension/ wrapper folder — just extension/'s contents, flattened to the
+  # root. git archive can't flatten a subtree directly, so archive the
+  # extension/ subtree object itself.
+  SUBTREE=$(git rev-parse "$TREE:extension")
+  git archive --format=zip -o "$ROOT/dist/munic-pro-store.zip" "$SUBTREE"
+  git add "$ROOT/dist/munic-pro-store.zip"
+  echo "dist/munic-pro-store.zip rebuilt (manifest.json at root, for Web Store upload)"
 fi

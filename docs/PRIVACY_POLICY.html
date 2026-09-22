@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MUNIC-PRO — Política de Privacidade</title>
+<style>
+  :root { --blue: #00437a; --ink: #1a1a1a; --muted: #555; --bg: #f6f8fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: #fff; }
+  header { background: var(--blue); color: #fff; padding: 2rem 1rem; text-align: center; }
+  header h1 { margin: 0; font-size: 1.6rem; }
+  main { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h2 { color: var(--blue); margin-top: 2rem; font-size: 1.15rem; }
+  .destaque { background: var(--bg); border-left: 4px solid var(--blue); padding: .8rem 1rem; margin: 1.5rem 0; }
+  code { background: var(--bg); border: 1px solid #e1e4e8; border-radius: 4px; padding: .1rem .35rem; font-size: .9em; }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 2rem 1rem; border-top: 1px solid #e1e4e8; }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<header><h1>MUNIC-PRO — Política de Privacidade</h1></header>
+<main>
+  <p><em>Última atualização: 22 de setembro de 2026.</em></p>
+
+  <div class="destaque"><strong>Resumo: o MUNIC-PRO guarda dados, mas não os
+  coleta nem os transmite a ninguém. O histórico da situação da coleta MUNIC
+  fica exclusivamente no IndexedDB do seu próprio navegador, na sua máquina.
+  A única requisição de rede é a consulta da situação atual, acionada por
+  clique, que vai ao próprio servidor do SIGC — mesma origem da página, mesma
+  sessão já autenticada. Não há nenhum recurso externo: nenhuma imagem,
+  biblioteca, fonte ou serviço de terceiros. Nada é enviado ao desenvolvedor,
+  e não há telemetria.</strong></div>
+
+  <h2>1. O que a extensão faz</h2>
+  <p>O MUNIC-PRO opera exclusivamente na página do SIGC "Situação das
+  Prefeituras, com Críticas da UF" (SIGC MUNIC 2026), ao lado dos botões
+  nativos da página, que não são alterados:</p>
+  <p><strong>Relatório-PRO</strong> consulta a situação atual de toda a UF
+  selecionada (uma requisição ao próprio servidor do SIGC), a menos que a
+  fotografia mais recente já guardada tenha menos de um minuto — nesse caso
+  reaproveita o histórico sem consultar de novo. Guarda uma fotografia datada
+  e abre um painel com cinco abas (Município, Assistência, Assistência %,
+  Agência, Agência %) construídas inteiramente a partir do histórico já
+  guardado no navegador. <strong>CSV-PRO</strong> exporta esse histórico como
+  uma planilha (uma linha por município por consulta). <strong>Backup
+  JSON</strong> exporta o histórico completo, como cópia de segurança.</p>
+
+  <h2>2. Por que a extensão guarda dados</h2>
+  <p>O SIGC mostra apenas a situação ATUAL de cada município — a cada
+  atualização, o valor anterior é sobrescrito, sem deixar rastro do que
+  mudou de uma semana para a outra. Guardar esse histórico é o propósito
+  inteiro da extensão: sem armazenamento local, não haveria nada para
+  mostrar além do que a própria página do SIGC já mostra.</p>
+  <p>O histórico é guardado como um registro do tipo "SCD tipo 2" — uma
+  linha por combinação de município, questionário e indicador, com as
+  datas em que cada estado começou e terminou a valer. Um município que
+  não muda de uma consulta para outra não custa nada a mais para guardar,
+  por mais vezes que a extensão seja usada.</p>
+
+  <h2>3. Onde os dados ficam e como somem</h2>
+  <p>O histórico fica <strong>somente no IndexedDB do seu navegador, na sua
+  própria máquina</strong>. Ele nunca é enviado a lugar nenhum — nem ao
+  desenvolvedor, nem a qualquer servidor além do próprio SIGC de onde os
+  dados vieram, e mesmo esse contato é uma leitura (consultar a situação
+  atual), não um envio do histórico guardado.</p>
+  <p><strong>Limpar os dados de navegação do Chrome apaga esse
+  histórico.</strong> É exatamente por isso que existe o botão
+  <strong>Backup JSON</strong>: ele exporta uma cópia completa do histórico
+  para um arquivo no seu computador, que sobrevive a uma limpeza do perfil
+  do navegador e pode ser guardado onde você preferir.</p>
+
+  <h2>4. Coleta e transmissão de dados</h2>
+  <p>A única requisição de rede que a extensão faz é a consulta da situação
+  atual, feita pelo botão Relatório-PRO: um POST ao próprio servidor do
+  SIGC (mesma origem da página, <code>credentials: 'same-origin'</code>),
+  dentro da sessão já autenticada do usuário, acionado por clique. Essa
+  requisição só TRAZ dados do SIGC para dentro do histórico local — não
+  envia o histórico guardado a lugar nenhum. Fora essa única
+  funcionalidade, o código não contém nenhuma outra chamada de rede; uma
+  verificação automática do repositório (<code>scripts/check-network.sh</code>)
+  confere, a cada alteração, que nenhuma requisição sai da origem do
+  próprio SIGC, complementando a auditoria do código aberto.</p>
+  <p><strong>Não há nenhum recurso externo nesta extensão</strong> — ao
+  contrário de extensões que buscam imagens de mapa, fontes ou scripts de
+  terceiros, o MUNIC-PRO não carrega absolutamente nada de fora da própria
+  página do SIGC e do próprio pacote da extensão. As tabelas do painel usam
+  o jQuery/DataTables que a página do SIGC já carrega — nada é baixado ou
+  embutido para isso — e o agrupamento por assistência usa uma tabela de
+  referência (agência → assistência, para a Bahia) embutida na extensão,
+  não consultada pela rede. Não há telemetria, análise de uso nem qualquer
+  integração com serviços de terceiros.</p>
+
+  <h2>5. Permissões do navegador</h2>
+  <p>A extensão solicita duas permissões, ambas usadas exclusivamente para
+  manter o histórico local e permitir exportá-lo:</p>
+  <ul>
+    <li><code>storage</code> — usada para guardar o histórico da situação
+    da coleta no IndexedDB do próprio navegador, na sua máquina. Este é o
+    armazenamento descrito nos itens 2 e 3 acima; nada além disso usa essa
+    permissão.</li>
+    <li><code>downloads</code> — usada apenas para que os botões
+    <strong>CSV-PRO</strong> e <strong>Backup JSON</strong> gravem os
+    arquivos exportados na sua pasta de Downloads, pelo mecanismo padrão
+    de download do Chrome. Os arquivos são montados inteiramente em
+    memória, a partir dos dados já guardados localmente, e nunca passam
+    pela rede.</li>
+  </ul>
+  <p>O manifesto declara apenas em quais páginas
+  (<code>portalweb.ibge.gov.br</code>, <code>portalweb2.ibge.gov.br</code> e
+  <code>w3sigcmunic2026.ibge.gov.br</code>, os domínios do SIGC MUNIC 2026)
+  seus scripts são executados. Isso pode ser verificado em
+  <code>chrome://extensions</code> e no arquivo <code>manifest.json</code>.</p>
+
+  <h2>6. Código aberto e auditoria</h2>
+  <p>Todo o código executável são os arquivos JavaScript publicados neste
+  repositório. O Manifest V3 do Chrome proíbe código remoto: o que está no
+  repositório é exatamente o que roda no navegador.</p>
+
+  <h2>7. LGPD</h2>
+  <p>Os dados guardados pela extensão são agregados por município e
+  agência (situação da coleta, contagens de críticas) — não são dados
+  pessoais de pessoas físicas. Como não há coleta, transmissão ou
+  tratamento de dados pessoais pela extensão, não há operações sujeitas à
+  Lei Geral de Proteção de Dados (Lei nº 13.709/2018) realizadas pelo
+  MUNIC-PRO. Os dados exibidos nas páginas do SIGC permanecem sob a
+  governança do IBGE e das políticas de acesso do próprio sistema.</p>
+
+  <h2>8. Alterações nesta política</h2>
+  <p>Qualquer mudança futura será refletida nesta página e no histórico do
+  repositório antes de ser distribuída.</p>
+
+  <h2>9. Contato</h2>
+  <p>Dúvidas e reportes: abra uma <em>issue</em> no repositório do projeto no
+  GitHub.</p>
+</main>
+<footer>MUNIC-PRO · projeto não oficial, sem vínculo com o IBGE ·
+<a href="index.html">página inicial</a></footer>
+</body>
+</html>

@@ -16,6 +16,9 @@
 #   - extension/features/situacao-fetch/  : fetch(), relative URLs only
 #   - extension/features/situacao-store/  : indexedDB only, no network at all
 #   - extension/features/situacao-export/ : Blob/download only, no network
+#
+# Also runs a repo-wide (not just extension/) check that no unlisted Chrome
+# Web Store URL is ever committed — see the bottom of this script.
 FETCH_DIRS='extension/common extension/features/situacao-fetch'
 STORAGE_DIRS='extension/features/situacao-store'
 
@@ -84,5 +87,18 @@ M=$(grep_out "$STORE" "$STORAGE_DIRS")
 M=$(grep_in "$NET" "$STORAGE_DIRS")
 [ -n "$(echo "$M" | tr -d '[:space:]')" ] && \
   fail "fetch() in a storage-sanctioned directory (it must never touch the network):" "$M"
+
+# Unlisted-distribution gate: the Chrome Web Store item is unlisted, so its
+# URL must never land in this public repo (docs, README, Pages, anywhere) —
+# publishing the link would effectively de-unlist it. Checked repo-wide, not
+# just extension/.
+STORE_PATTERN='chromewebstore\.google\.com/detail|chrome\.google\.com/webstore/detail'
+if [ "$1" = "--staged" ]; then
+  STORE_MATCHES=$(git grep --cached -nE "$STORE_PATTERN" -- . 2>/dev/null)
+else
+  STORE_MATCHES=$(grep -rnE "$STORE_PATTERN" . 2>/dev/null)
+fi
+[ -n "$STORE_MATCHES" ] && \
+  fail "unlisted Chrome Web Store URL found in repo:" "$STORE_MATCHES"
 
 echo "network gate: CLEAN"
