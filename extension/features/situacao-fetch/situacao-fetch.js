@@ -72,7 +72,16 @@
     const html = await res.text();
     assertAuthenticated(html);
     const { rows, warnings } = parseSituacao(html);
-    return { rows, warnings, html };
+    // id_uf is the numeric value this very request was made with — exact
+    // and unambiguous, unlike re-deriving it from the response's own
+    // uf_sigla text column. Both are carried (uf_sigla is what the store's
+    // rowKey and the panel's UF filter use, since it comes straight off
+    // SIGC's response rather than the page's <select>), but id_uf lets the
+    // report match the store's data back to the page's #IdUf value without
+    // depending on any sigla being parseable from the dropdown at all.
+    const idUf = Number(uf);
+    const withUf = rows.map((r) => ({ ...r, id_uf: idUf }));
+    return { rows: withUf, warnings, html };
   }
 
   window.__municProSituacaoFetch = { fetchSituacao };

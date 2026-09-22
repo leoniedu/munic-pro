@@ -74,6 +74,26 @@ fixture extension/features/situacao-report/zz-gate-test.js \
   "indexedDB.open('x');"
 expect_fail "storage API outside the storage-sanctioned directory"
 
+# situacao-store/ now holds both the ISOLATED-world bridge (owns
+# indexedDB) and the MAIN-world client (postMessage only). The directory
+# stays sanctioned as a whole, so a new file dropped into it — named like
+# the real bridge or not — must still be allowed to use indexedDB.
+fixture extension/features/situacao-store/zz-gate-bridge-test.js \
+  "indexedDB.open('munic-pro', 1);"
+expect_pass "indexedDB in a new file inside the storage-sanctioned directory (ISOLATED-world bridge)"
+
+# The MAIN-world client must never regress into calling indexedDB
+# directly — the whole point of the split is that MAIN-world code opens
+# a database on the PAGE's origin, not the extension's. This gate cannot
+# tell MAIN-world files apart from ISOLATED-world ones within the same
+# sanctioned directory (that guarantee lives in a source-shape test in
+# tests/situacao-store.test.js instead), but it must still catch
+# indexedDB used OUTSIDE the sanctioned directory altogether — e.g. if a
+# MAIN-world report or fetch file grew a direct call.
+fixture extension/features/situacao-report/zz-gate-main-regression-test.js \
+  "async function bad() { return indexedDB.open('munic-pro', 1); }"
+expect_fail "indexedDB called from a MAIN-world (non-storage) directory"
+
 fixture extension/common/zz-gate-test.js \
   "navigator.sendBeacon('/x');"
 expect_fail "sendBeacon anywhere in extension/"

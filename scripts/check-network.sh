@@ -17,6 +17,18 @@
 #   - extension/features/situacao-store/  : indexedDB only, no network at all
 #   - extension/features/situacao-export/ : Blob/download only, no network
 #
+# situacao-store/ holds BOTH worlds' code: situacao-bridge.js (ISOLATED
+# world, the extension's own origin) is the only file that actually opens
+# indexedDB; situacao-store.js (MAIN world, the page's origin) is a thin
+# window.postMessage client with no storage API of its own, and
+# situacao-diff.js (pure, no I/O) is shared by both. The gate sanctions the
+# whole directory rather than telling the two worlds apart file-by-file —
+# same tripwire as before, just now also covering the ISOLATED file. What
+# actually keeps MAIN-world code out of indexedDB is that it has no
+# window.__municPro*Bridge global and no reason to call indexedDB.open()
+# — checked by a source-shape test in tests/situacao-store.test.js, not by
+# this script.
+#
 # Also runs a repo-wide (not just extension/) check that no unlisted Chrome
 # Web Store URL is ever committed — see the bottom of this script.
 FETCH_DIRS='extension/common extension/features/situacao-fetch'

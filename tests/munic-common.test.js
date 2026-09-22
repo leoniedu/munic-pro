@@ -74,26 +74,6 @@ describe('buildCsv', () => {
   });
 });
 
-describe('isoWeek', () => {
-  // 2026-09-22 is a Tuesday in ISO week 39.
-  test('formats as YYYY-Www', () => {
-    expect(M.isoWeek(new Date('2026-09-22T10:00:00'))).toBe('2026-W39');
-  });
-
-  // The hard cases: ISO weeks belong to the year containing their Thursday.
-  test('a January date can belong to the previous ISO year', () => {
-    expect(M.isoWeek(new Date('2027-01-01T10:00:00'))).toBe('2026-W53');
-  });
-
-  test('a December date can belong to the next ISO year', () => {
-    expect(M.isoWeek(new Date('2024-12-30T10:00:00'))).toBe('2025-W01');
-  });
-
-  test('pads single-digit weeks', () => {
-    expect(M.isoWeek(new Date('2026-01-08T10:00:00'))).toBe('2026-W02');
-  });
-});
-
 describe('localTimestamp', () => {
   test('matches the wall clock, not toISOString (which converts to UTC)', () => {
     expect(M.localTimestamp(new Date(2026, 8, 20, 21, 30, 0)))
@@ -107,11 +87,17 @@ describe('localTimestamp', () => {
 
   // The exact case from the CRITICAL finding: a Sunday-evening run in a
   // negative-offset zone. toISOString().slice(0,19) converts to UTC first,
-  // so re-parsing the stripped string as local shifts it onto Monday and
-  // into the next ISO week. localTimestamp must round-trip to the same week.
-  test('round-trips to the same ISO week as the wall-clock date (Sunday evening)', () => {
+  // so re-parsing the stripped string as local shifts the calendar date
+  // onto Monday. localTimestamp must round-trip to the exact same
+  // wall-clock date and time, not just an equivalent instant.
+  test('round-trips to the same wall-clock date and time (Sunday evening)', () => {
     const d = new Date(2026, 8, 20, 21, 30); // Sunday 2026-09-20, 21:30 local
-    expect(M.isoWeek(new Date(M.localTimestamp(d)))).toBe(M.isoWeek(d));
+    const roundTripped = new Date(M.localTimestamp(d));
+    expect(roundTripped.getFullYear()).toBe(d.getFullYear());
+    expect(roundTripped.getMonth()).toBe(d.getMonth());
+    expect(roundTripped.getDate()).toBe(d.getDate());
+    expect(roundTripped.getHours()).toBe(d.getHours());
+    expect(roundTripped.getMinutes()).toBe(d.getMinutes());
   });
 });
 

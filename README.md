@@ -52,19 +52,23 @@ questionário e indicador, uma coluna por data, colorida por situação),
 
 Diferentemente do SIGC-PRO, esta extensão **guarda** dados: o histórico é
 o produto. Mas, como ele, **não pede permissão nenhuma** ao navegador — o
-IndexedDB e o download por Blob são APIs da própria página, e nenhum dos
-dois exige permissão declarada.
+IndexedDB e o download por Blob são APIs do próprio navegador, e nenhuma
+das duas exige permissão declarada.
 
-O histórico fica no navegador, na sua máquina. **Limpar os dados de
-navegação apaga o histórico** — é para isso que existe o Backup JSON.
+O histórico fica no IndexedDB da própria extensão (não da página do
+SIGC), na sua máquina — por isso **limpar os dados do site do SIGC não
+apaga o histórico**. **Remover a extensão, ou limpar os dados dela
+especificamente, apaga o histórico** — é para isso que existe o Backup
+JSON.
 
 As requisições de rede vão **exclusivamente ao próprio servidor do SIGC**, nas
 mesmas URLs que a página já usa, e só mediante clique. Não há servidor
 externo, telemetria, analytics nem envio de dados para lugar nenhum.
 
-O histórico fica apenas no seu navegador e nos arquivos que você baixar.
-Limpar os dados do navegador apaga o histórico guardado — por isso a cópia em
-JSON é automática.
+O histórico fica apenas no seu navegador (no armazenamento da própria
+extensão) e nos arquivos que você baixar. Remover a extensão, ou limpar os
+dados dela especificamente, apaga o histórico guardado — por isso o Backup
+JSON existe.
 
 ## Desenvolvimento
 

@@ -9,8 +9,6 @@
 
   if (window.__municProSituacaoAggregate) return;
 
-  const { isoWeek } = window.__municPro;
-
   // Display order for the buckets. Unknown values are appended at the
   // end by the caller rather than folded into one of these.
   const SITUACAO_ORDER = [
@@ -44,46 +42,23 @@
     return SITUACAO_BUCKET[situacao] || situacao;
   }
 
-  // One column per ISO week, holding the LAST run of that week.
+  // One column per run THAT PRODUCED A CHANGE (n_changed > 0). A run
+  // where nothing moved adds no column — it is still recorded in the
+  // `runs` table (so "we ran and nothing moved" stays distinguishable
+  // from "nobody ran it"), it just does not earn a place in the report's
+  // grid.
   //
-  // Deliberately not the 2025 rule (R/report.R:141-163), which picked
-  // the run whose weekday was closest to the latest run's weekday. That
-  // is sensible for near-daily runs and misleading for irregular ones: a
-  // week represented by a Monday run would sit beside a week represented
-  // by a Friday run as though they were comparable.
-  //
-  // Weeks with no run are emitted with run_ts null, so a gap in
-  // monitoring is visible instead of being closed up.
-  function weekColumns(runs) {
-    if (!runs.length) return [];
-
-    const lastByWeek = new Map();
-    for (const r of runs) {
-      const week = isoWeek(new Date(r.run_ts));
-      const prev = lastByWeek.get(week);
-      if (!prev || String(r.run_ts) > String(prev)) {
-        lastByWeek.set(week, r.run_ts);
-      }
-    }
-
-    const sortedTs = runs.map((r) => r.run_ts).sort();
-    const first = new Date(sortedTs[0]);
-    const last = new Date(sortedTs[sortedTs.length - 1]);
-
-    // Walk week by week from the first run to the last so gaps appear.
-    // Stepping 7 days from a normalized Monday avoids month-length and
-    // year-boundary arithmetic entirely.
-    const cursor = new Date(first.getFullYear(), first.getMonth(), first.getDate());
-    cursor.setDate(cursor.getDate() - ((cursor.getDay() || 7) - 1));
-
-    const out = [];
-    const guard = 1000; // a run history longer than ~19 years is a bug
-    for (let i = 0; cursor <= last && i < guard; i += 1) {
-      const week = isoWeek(cursor);
-      out.push({ week, run_ts: lastByWeek.get(week) ?? null });
-      cursor.setDate(cursor.getDate() + 7);
-    }
-    return out;
+  // Replaces the earlier one-column-per-ISO-week scheme: with runs of
+  // uncertain cadence, a week is an arbitrary unit, and a week with no
+  // run added a column whose only content was "nothing to show" — noise
+  // once every run (change or not) is already visible in the export and
+  // the run count. Per the given direction: "keep all runs when there
+  // was a difference... if this gets too unwieldy we can prune later" —
+  // no pruning is implemented here.
+  function runColumns(runs) {
+    return runs
+      .filter((r) => (r.n_changed || 0) > 0)
+      .map((r) => ({ run_ts: r.run_ts }));
   }
 
   // The rows open at an instant. from_ts is inclusive and until_ts
@@ -111,8 +86,7 @@
   function cellForName(hit, name) {
     if (!hit) return null;
     if (name === 'situacao_rec') return situacaoRec(hit.situacao);
-    // Missing on a row (e.g. fixtures / not yet fetched) reads as null,
-    // same as a missing week.
+    // Missing on a row (e.g. fixtures / not yet fetched) reads as null.
     return hit[name] ?? null;
   }
 
@@ -134,8 +108,7 @@
       }
     }
 
-    const asOfCache = columns.map((c) =>
-      (c.run_ts === null ? null : situacaoAsOf(allRows, c.run_ts)));
+    const asOfCache = columns.map((c) => situacaoAsOf(allRows, c.run_ts));
 
     const out = [];
     for (const [key, r] of latestByKey) {
@@ -153,7 +126,6 @@
           questionario: r.questionario,
           name,
           cells: asOfCache.map((rows) => {
-            if (rows === null) return null;
             const hit = rows.find((row) => gridKey(row) === key);
             return cellForName(hit, name);
           }),
@@ -209,12 +181,10 @@
   // total can itself change week to week (a município's row can be
   // absent before its first observed run).
   function groupCountsByColumn(allRows, groupFields, columns) {
-    const asOfCache = columns.map((c) =>
-      (c.run_ts === null ? null : situacaoAsOf(allRows, c.run_ts)));
+    const asOfCache = columns.map((c) => situacaoAsOf(allRows, c.run_ts));
 
     const seen = new Map(); // group\u0000situacao -> {group, situacao}
     const perColumnCounts = asOfCache.map((rows) => {
-      if (rows === null) return null;
       const totals = new Map();
       const counts = new Map();
       for (const r of rows) {
@@ -233,11 +203,6 @@
       const cells = [];
       const pctCells = [];
       for (const col of perColumnCounts) {
-        if (col === null) {
-          cells.push(null);
-          pctCells.push(null);
-          continue;
-        }
         const n = col.counts.get(k) || 0;
         cells.push(n);
         const total = col.totals.get(group);
@@ -252,7 +217,7 @@
   }
 
   window.__municProSituacaoAggregate = {
-    weekColumns,
+    runColumns,
     situacaoAsOf,
     municipioGrid,
     groupCounts,

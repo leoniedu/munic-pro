@@ -97,8 +97,8 @@ describe('situacaoClass', () => {
 
 describe('renderMunicipioTab', () => {
   const columns = [
-    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
-    { week: '2026-W38', run_ts: null },
+    { run_ts: '2026-09-07T09:00:00' },
+    { run_ts: '2026-09-21T09:00:00' },
   ];
   const grid = [
     {
@@ -156,20 +156,14 @@ describe('renderMunicipioTab', () => {
     expect(el.textContent).toContain('Situação');
   });
 
-  // The header carries the real run date, so a stale column cannot be
-  // mistaken for a fresh one.
-  test('column headers carry the week and the run date', () => {
+  // The header carries the exact run date and time, so a stale column
+  // cannot be mistaken for a fresh one and two runs on the same day are
+  // still told apart.
+  test('column headers carry the run date and time', () => {
     const el = R.renderMunicipioTab(grid, columns);
     const ths = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
-    // The date the reading was taken, dd/mm/yyyy — the ISO week is
-    // machinery, and a reader wants to know WHEN the column was measured.
     expect(ths.some((t) => t.includes('07/09/2026'))).toBe(true);
-  });
-
-  test('a week with no run is labelled as such', () => {
-    const el = R.renderMunicipioTab(grid, columns);
-    const ths = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
-    expect(ths.some((t) => t.includes('2026-W38') && /sem coleta|—/i.test(t))).toBe(true);
+    expect(ths.some((t) => t.includes('21/09/2026'))).toBe(true);
   });
 
   // Only situacao_rec rows are coloured. Críticas rows are plain
@@ -191,11 +185,11 @@ describe('renderMunicipioTab', () => {
     expect(criticasRow.textContent).toContain('51');
   });
 
-  // The gap week (run_ts: null) yields a null cell in the grid. It must
-  // render as a visible placeholder — its own text and its own class —
-  // never as a blank <td> that would be indistinguishable from missing
-  // data, in EVERY row type (críticas or situação).
-  test('a gap cell shows the placeholder, not a blank cell, in all three row types', () => {
+  // A null cell (município not yet observed at that run) must render as
+  // a visible placeholder — its own text and its own class — never as a
+  // blank <td> that would be indistinguishable from missing data, in
+  // EVERY row type (críticas or situação).
+  test('a missing-data cell shows the placeholder, not a blank cell, in all three row types', () => {
     const el = R.renderMunicipioTab(grid, columns);
     for (const tr of [...el.querySelectorAll('tbody tr')]) {
       const tds = [...tr.querySelectorAll('td')];
@@ -215,8 +209,8 @@ describe('renderGroupTab', () => {
   // snapshot column. counts is a list of {group, situacao, cells[]} (or
   // pctCells[] for the percentage tab), parallel to `columns`.
   const columns = [
-    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
-    { week: '2026-W39', run_ts: '2026-09-21T09:00:00' },
+    { run_ts: '2026-09-07T09:00:00' },
+    { run_ts: '2026-09-21T09:00:00' },
   ];
   const counts = [
     { group: 'A', situacao: 'Não Iniciado', cells: [2, 1] },
@@ -360,8 +354,8 @@ describe('buildActions — Relatório panel placement', () => {
   // latest snapshot in every column: a repeated-snapshot bug would show
   // the same counts in both date columns.
   test('Relatório panel has an Agência tab whose counts differ across dates', async () => {
-    // Adjacent ISO weeks (no gap week between them), so weekColumns()
-    // yields exactly two columns and the two runs land one per column.
+    // Both runs produced a change, so runColumns() yields exactly two
+    // columns and the two runs land one per column.
     window.__municProSituacaoStore = {
       getAll: async () => [
         { municipio_codigo: '1', municipio_nome: 'Alagoinhas',
@@ -374,8 +368,8 @@ describe('buildActions — Relatório panel placement', () => {
           from_ts: '2026-09-14T09:00:00', until_ts: null },
       ],
       getRuns: async () => [
-        { run_ts: '2026-09-07T09:00:00', warnings: [] },
-        { run_ts: '2026-09-14T09:00:00', warnings: [] },
+        { run_ts: '2026-09-07T09:00:00', warnings: [], n_changed: 1 },
+        { run_ts: '2026-09-14T09:00:00', warnings: [], n_changed: 1 },
       ],
     };
 
@@ -541,8 +535,8 @@ describe('table column counts (DataTables mismatch guard)', () => {
   // construction; this asserts that invariant directly rather than
   // trusting it.
   const columns = [
-    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
-    { week: '2026-W38', run_ts: null },
+    { run_ts: '2026-09-07T09:00:00' },
+    { run_ts: '2026-09-21T09:00:00' },
   ];
 
   test('renderMunicipioTab keeps header and body cell counts equal', () => {
@@ -782,7 +776,7 @@ describe('Relatório end-to-end with jQuery absent', () => {
           situacao: 'Concluído',
           from_ts: '2026-09-07T09:00:00', until_ts: null },
       ],
-      getRuns: async () => [{ run_ts: '2026-09-07T09:00:00', warnings: [] }],
+      getRuns: async () => [{ run_ts: '2026-09-07T09:00:00', warnings: [], n_changed: 1 }],
     };
 
     const root = document.createElement('div');
@@ -885,7 +879,7 @@ describe('showPane across DataTables initialisation', () => {
 });
 
 describe('assistência column on the Município tab', () => {
-  const columns = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+  const columns = [{ run_ts: '2026-09-21T09:00:00' }];
   const line = {
     key: 'k', municipio_codigo: '2900702', municipio_nome: 'Alagoinhas',
     agencia_codigo: '290070200', agencia_nome: 'ALAGOINHAS',
@@ -935,7 +929,7 @@ describe('zero-valued cells', () => {
       questionario: 'Básico', name: 'criticas_informativas', cells: [0],
     };
     const el = R.renderMunicipioTab(
-      [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+      [line], [{ run_ts: '2026-09-21T09:00:00' }]);
     const tds = [...el.querySelectorAll('tbody td')];
     expect(tds[tds.length - 1].textContent).toBe('0');
   });
@@ -947,7 +941,7 @@ describe('zero-valued cells', () => {
       questionario: 'Básico', name: 'criticas_informativas', cells: [null],
     };
     const el = R.renderMunicipioTab(
-      [line], [{ week: '2026-W38', run_ts: null }]);
+      [line], [{ run_ts: '2026-09-14T09:00:00' }]);
     const tds = [...el.querySelectorAll('tbody td')];
     expect(tds[tds.length - 1].textContent).toBe('—');
   });
@@ -989,7 +983,7 @@ describe('staleness check before refetching', () => {
     window.__municProSituacaoStore = {
       getAll: async () => [],
       getRuns: async () => (lastRunMs === null
-        ? [] : [{ run_ts: iso(lastRunMs), warnings: [] }]),
+        ? [] : [{ run_ts: iso(lastRunMs), warnings: [], id_uf: 29 }]),
       saveSnapshot: async () => ({ nChanged: 0, nRows: 0 }),
     };
   }
@@ -1042,7 +1036,7 @@ describe('group tab argument order', () => {
       criticas_informativas: 0, criticas_comparativas: 0,
       from_ts: '2026-09-21T09:00:00', until_ts: null,
     }];
-    const cols = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+    const cols = [{ run_ts: '2026-09-21T09:00:00' }];
     const out = window.__municProSituacaoAggregate.groupCountsByColumn(rows, ['agencia_nome'], cols);
     expect(out.length).toBeGreaterThan(0);
     expect(out[0].group).toBe('ALAGOINHAS');
@@ -1063,7 +1057,7 @@ describe('percentage tabs render percentages, not counts', () => {
   // percentage tabs received the SAME object as the count tabs and differed
   // only by the formatter, so fmtPct ran over raw counts. groupCountsByColumn
   // had always computed pctCells correctly — nothing ever read them.
-  const columns = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+  const columns = [{ run_ts: '2026-09-21T09:00:00' }];
   const counts = [{
     group: 'ALAGOINHAS', situacao: 'Não Iniciado',
     cells: [18], pctCells: [0.9],
@@ -1112,7 +1106,7 @@ describe('Indicador column labels', () => {
       questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
     };
     const el = R.renderMunicipioTab(
-      [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+      [line], [{ run_ts: '2026-09-21T09:00:00' }]);
     const tds = [...el.querySelectorAll('tbody td')].map((t) => t.textContent);
     expect(tds).toContain('Situação');
     expect(tds).not.toContain('situacao_rec');
@@ -1127,36 +1121,32 @@ describe('Indicador column labels', () => {
       questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
     };
     const el = R.renderMunicipioTab(
-      [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+      [line], [{ run_ts: '2026-09-21T09:00:00' }]);
     expect(el.querySelector('.munic-pro-concluido')).toBeTruthy();
   });
 });
 
 describe('column headers show the measurement date', () => {
-  test('a run column shows dd/mm/yyyy and no week number', () => {
+  // Change #3: one column per run, headed by the exact date AND time —
+  // needed because two runs can land on the same day, and the header
+  // must still tell them apart.
+  test('a run column shows dd/mm/yyyy HH:MM', () => {
     const el = R.renderMunicipioTab(
-      [], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+      [], [{ run_ts: '2026-09-21T09:00:00' }]);
     const th = [...el.querySelectorAll('thead th')].pop();
-    expect(th.textContent).toBe('21/09/2026');
+    expect(th.textContent).toBe('21/09/2026 09:00');
     expect(th.textContent).not.toContain('W39');
   });
 
-  // A week with no run has no date to show, so it keeps the week number —
-  // it is the only thing identifying WHICH gap this is, and the gap must
-  // stay visible rather than being silently closed up.
-  test('an empty week still names itself and says there was no run', () => {
-    const el = R.renderMunicipioTab(
-      [], [{ week: '2026-W38', run_ts: null }]);
-    const th = [...el.querySelectorAll('thead th')].pop();
-    expect(th.textContent).toContain('2026-W38');
-    expect(th.textContent).toContain('sem coleta');
-  });
+  // No gap columns exist any more (runColumns() only emits a column for
+  // a run that changed something), so there is nothing left to
+  // special-case for "no run this period".
 
   test('the year is shown, so December and January do not collide', () => {
     const el = R.renderMunicipioTab(
-      [], [{ week: '2027-W01', run_ts: '2027-01-04T09:00:00' }]);
+      [], [{ run_ts: '2027-01-04T09:00:00' }]);
     expect([...el.querySelectorAll('thead th')].pop().textContent)
-      .toBe('04/01/2027');
+      .toBe('04/01/2027 09:00');
   });
 });
 
@@ -1182,7 +1172,7 @@ describe('pane visibility survives DataTables initialisation', () => {
   }
 
   function panelWithTabs() {
-    const columns = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+    const columns = [{ run_ts: '2026-09-21T09:00:00' }];
     return R.buildPanel({
       grid: [], columns,
       porAssistencia: [], porAssistenciaPct: [],

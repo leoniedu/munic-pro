@@ -31,17 +31,33 @@ test('no chrome.* API is called, which is what makes that possible', () => {
 
 test('manifest targets the MUNIC 2026 hosts', () => {
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
-  const matches = manifest.content_scripts[0].matches;
-  expect(matches).toContain('https://w3sigcmunic2026.ibge.gov.br/*');
-  expect(matches).toContain('https://portalweb.ibge.gov.br/*');
+  for (const cs of manifest.content_scripts) {
+    expect(cs.matches).toContain('https://w3sigcmunic2026.ibge.gov.br/*');
+    expect(cs.matches).toContain('https://portalweb.ibge.gov.br/*');
+  }
 });
 
-// Each file reads its dependencies off window at load time, so a wrong
-// order is a TypeError at page load — in the browser, where nobody is
+// Two content_scripts entries now share these matches: an ISOLATED-world
+// one (the extension's own origin, owns IndexedDB) and the original
+// MAIN-world one (the page's own jQuery/DataTables and session). Each
+// file reads its dependencies off window at load time, so a wrong order
+// is a TypeError at page load — in the browser, where nobody is
 // watching. Pinned here instead.
-test('manifest loads scripts in dependency order', () => {
+test('the ISOLATED-world content script loads in dependency order', () => {
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
-  expect(manifest.content_scripts[0].js).toEqual([
+  const isolated = manifest.content_scripts.find((cs) => cs.world === 'ISOLATED');
+  expect(isolated).toBeTruthy();
+  expect(isolated.js).toEqual([
+    'features/situacao-store/situacao-diff.js',
+    'features/situacao-store/situacao-bridge.js',
+  ]);
+});
+
+test('the MAIN-world content script loads in dependency order', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  const main = manifest.content_scripts.find((cs) => cs.world === 'MAIN');
+  expect(main).toBeTruthy();
+  expect(main.js).toEqual([
     'common/munic-common.js',
     'common/assistencias.js',
     'features/situacao-store/situacao-diff.js',
@@ -52,6 +68,15 @@ test('manifest loads scripts in dependency order', () => {
     'features/situacao-report/situacao-report.js',
     'features/situacao-export/situacao-export.js',
   ]);
+});
+
+// The ISOLATED script must be ready before the MAIN-world report code
+// (document_idle) can call it — otherwise an early Relatório-PRO click
+// races the bridge's own message listener registration.
+test('the ISOLATED-world content script runs at document_start', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  const isolated = manifest.content_scripts.find((cs) => cs.world === 'ISOLATED');
+  expect(isolated.run_at).toBe('document_start');
 });
 
 // Chrome refuses to load an extension whose manifest names a file that is

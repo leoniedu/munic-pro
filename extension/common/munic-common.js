@@ -1,5 +1,5 @@
 // MUNIC-PRO shared runtime: F5 gateway URL construction, CSV building,
-// file download, ISO-week formatting. Loaded before all feature scripts
+// file download, timestamp formatting. Loaded before all feature scripts
 // (MAIN world), so every feature sees window.__municPro.
 //
 // Deliberately a copy of sigc-pro's equivalents rather than a shared
@@ -115,23 +115,6 @@
     };
   }
 
-  // ISO-8601 week: weeks start Monday, and a week belongs to the year
-  // containing its Thursday. Used for the Município tab's columns (one
-  // per week, last run of that week), so it has to agree with what a
-  // human would call "week 39" — hence Thursday-anchored rather than a
-  // naive day-of-year division.
-  function isoWeek(date) {
-    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    // Shift to the Thursday of this ISO week. getDay() is 0 for Sunday,
-    // so map Sunday to 7 first.
-    const day = d.getDay() || 7;
-    d.setDate(d.getDate() + 4 - day);
-    const year = d.getFullYear();
-    const jan1 = new Date(year, 0, 1);
-    const week = Math.ceil(((d - jan1) / 86400000 + 1) / 7);
-    return `${year}-W${String(week).padStart(2, '0')}`;
-  }
-
   // Keeps a widget present next to a page element. SIGC re-renders its
   // filter area, which silently removes a plainly-inserted button, so a
   // one-shot insert at document_idle does not survive.
@@ -185,7 +168,6 @@
     downloadFile,
     timestampSlug,
     localTimestamp,
-    isoWeek,
     mountWidget,
   };
 })();

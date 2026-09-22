@@ -29,8 +29,14 @@
   // 2026 returns one row per município PER QUESTIONÁRIO, and the two move
   // independently — Básico can be Concluído while Suplementar has not
   // started. The key must therefore include the questionário.
+  //
+  // UF is also part of the key: município_codigo is only unique WITHIN a
+  // UF (IBGE códigos share digits across states), and changing the page's
+  // UF dropdown before refetching must not read as "every município of
+  // the previous UF vanished". Each UF keeps its own independent history;
+  // someone with access to several UFs simply accumulates all of them.
   function rowKey(row) {
-    return `${row.municipio_codigo}|${row.questionario}`;
+    return `${row.uf_sigla}|${row.municipio_codigo}|${row.questionario}`;
   }
 
   function sameValues(a, b) {

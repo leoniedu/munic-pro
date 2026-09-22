@@ -1,143 +1,91 @@
-// IndexedDB persistence for the situação history.
+// MAIN-world client for the situação history.
 //
-// IndexedDB rather than chrome.storage: this is a growing time series,
-// and chrome.storage is a quota-limited key-value bag. It is also a page
-// API, so it works from the MAIN world where chrome.* does not.
+// The actual IndexedDB lives in the extension's own origin, owned by the
+// ISOLATED-world situacao-bridge.js — this file runs in the MAIN world
+// (alongside the page's own scripts) and never touches indexedDB itself.
+// Every call here is a window.postMessage request answered by the bridge.
+//
+// Why the split exists: indexedDB.open() from the MAIN world opens a
+// database on the PAGE's origin, not the extension's. The manifest matches
+// three hosts, so that used to mean up to three separate, silently
+// diverging histories — and clearing site data for the page (the standard
+// fix for an F5 login loop) destroyed the history along with it. Routing
+// every call through the ISOLATED world keeps the data in the extension's
+// own origin, one history, regardless of which matched host is open.
 //
 // This directory is storage-sanctioned by scripts/check-network.sh and
 // must never touch the network — no fetching of any kind belongs here.
+// (This file itself now holds no storage API call at all — see
+// situacao-bridge.js, which is the actual storage-sanctioned code.)
 (function () {
   'use strict';
 
   if (window.__municProSituacaoStore) return;
 
-  const { diffSnapshot, rowKey } = window.__municProSituacaoDiff;
+  const SOURCE_MAIN = 'munic-pro-main';
+  const SOURCE_ISOLATED = 'munic-pro-isolated';
 
-  const DB_NAME = 'munic-pro';
-  const DB_VERSION = 1;
-  const STORE_SITUACAO = 'situacao';
-  const STORE_RUNS = 'runs';
+  let nextId = 1;
+  const pending = new Map();
 
-  function promisify(req) {
+  window.addEventListener('message', (event) => {
+    // Same-origin only: a legitimate reply comes from this same page's
+    // ISOLATED-world content script, which always posts to location.origin.
+    if (event.origin !== location.origin) return;
+    const msg = event.data;
+    if (!msg || msg.source !== SOURCE_ISOLATED) return;
+    const waiting = pending.get(msg.id);
+    if (!waiting) return;
+    pending.delete(msg.id);
+    if ('error' in msg) waiting.reject(new Error(msg.error));
+    else waiting.resolve(msg.result);
+  });
+
+  // How long a call may wait for the ISOLATED side before giving up. The
+  // bridge script loads at document_start and should always be listening
+  // well before this MAIN-world script's document_idle features can call
+  // it — this guards against that assumption being wrong, rather than
+  // hanging a button click forever.
+  const CALL_TIMEOUT_MS = 10000;
+
+  function call(method, ...args) {
+    const id = nextId++;
     return new Promise((resolve, reject) => {
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(
+          'A extensão não respondeu (camada de armazenamento indisponível).',
+        ));
+      }, CALL_TIMEOUT_MS);
+      pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      window.postMessage({ source: SOURCE_MAIN, id, method, args }, location.origin);
     });
   }
 
-  function txDone(tx) {
-    return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
+  function saveSnapshot(rows, runTs, warnings) {
+    return call('saveSnapshot', rows, runTs, warnings);
   }
 
-  function openDb() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE_SITUACAO)) {
-          // Auto-increment: one município+questionário has MANY rows over
-          // time (one per state), so the key cannot be the business key.
-          const s = db.createObjectStore(STORE_SITUACAO, {
-            keyPath: 'id',
-            autoIncrement: true,
-          });
-          // Open rows are looked up on every save. IndexedDB cannot index
-          // on null, so `open_key` holds the row key while the row is
-          // current and is deleted when it closes — making this index
-          // contain exactly the open rows.
-          s.createIndex('open_key', 'open_key', { unique: true });
-        }
-        if (!db.objectStoreNames.contains(STORE_RUNS)) {
-          db.createObjectStore(STORE_RUNS, { keyPath: 'run_ts' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
+  function getCurrent() {
+    return call('getCurrent');
   }
 
-  async function getCurrent() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_SITUACAO, 'readonly');
-    const rows = await promisify(tx.objectStore(STORE_SITUACAO).getAll());
-    db.close();
-    return rows.filter((r) => r.until_ts === null);
+  function getAll() {
+    return call('getAll');
   }
 
-  async function getAll() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_SITUACAO, 'readonly');
-    const rows = await promisify(tx.objectStore(STORE_SITUACAO).getAll());
-    db.close();
-    return rows;
+  function getRuns() {
+    return call('getRuns');
   }
 
-  async function getRuns() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_RUNS, 'readonly');
-    const runs = await promisify(tx.objectStore(STORE_RUNS).getAll());
-    db.close();
-    return runs.sort((a, b) => String(a.run_ts).localeCompare(String(b.run_ts)));
-  }
-
-  async function clearAll() {
-    const db = await openDb();
-    const tx = db.transaction([STORE_SITUACAO, STORE_RUNS], 'readwrite');
-    tx.objectStore(STORE_SITUACAO).clear();
-    tx.objectStore(STORE_RUNS).clear();
-    await txDone(tx);
-    db.close();
-  }
-
-  // Applies one fetch to the store: closes what changed or vanished,
-  // opens what is new, and records the run either way.
-  //
-  // The whole thing runs in ONE readwrite transaction, so a failure
-  // halfway cannot leave history half-updated.
-  async function saveSnapshot(rows, runTs, warnings) {
-    const db = await openDb();
-    const tx = db.transaction([STORE_SITUACAO, STORE_RUNS], 'readwrite');
-    const situacao = tx.objectStore(STORE_SITUACAO);
-    const runs = tx.objectStore(STORE_RUNS);
-
-    const stored = await promisify(situacao.getAll());
-    const current = stored.filter((r) => r.until_ts === null);
-
-    const { toClose, toInsert, nChanged } = diffSnapshot(current, rows, runTs);
-
-    const byKey = new Map(current.map((r) => [rowKey(r), r]));
-    for (const { key, until_ts } of toClose) {
-      const existing = byKey.get(key);
-      if (!existing) continue;
-      // Drop open_key as the row closes: the index then holds only open
-      // rows, and its uniqueness constraint stays satisfiable when the
-      // replacement row for the same key is inserted below.
-      const { open_key, ...rest } = existing;
-      situacao.put({ ...rest, until_ts });
-    }
-
-    for (const r of toInsert) {
-      situacao.add({ ...r, open_key: rowKey(r) });
-    }
-
-    runs.put({
-      run_ts: runTs,
-      n_rows: rows.length,
-      n_changed: nChanged,
-      warnings: warnings || [],
-    });
-
-    await txDone(tx);
-    db.close();
-    return { nChanged, nRows: rows.length };
+  function clearAll() {
+    return call('clearAll');
   }
 
   window.__municProSituacaoStore = {
-    openDb,
     saveSnapshot,
     getCurrent,
     getAll,

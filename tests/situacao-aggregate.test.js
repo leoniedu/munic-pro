@@ -5,53 +5,60 @@ await import('../extension/features/situacao-report/situacao-aggregate.js');
 
 const A = window.__municProSituacaoAggregate;
 
-describe('weekColumns', () => {
-  // The 2025 R code picked, per ISO week, the snapshot whose weekday was
-  // closest to the latest snapshot's weekday. That assumes near-daily
-  // runs. The 2026 cadence is uncertain, so this takes the LAST run of
-  // each week — well defined at any cadence.
-  test('takes the last run of each ISO week', () => {
-    const runs = [
-      { run_ts: '2026-09-21T09:00:00' }, // Mon, W39
-      { run_ts: '2026-09-23T09:00:00' }, // Wed, W39
-      { run_ts: '2026-09-28T09:00:00' }, // Mon, W40
-    ];
-    expect(A.weekColumns(runs)).toEqual([
-      { week: '2026-W39', run_ts: '2026-09-23T09:00:00' },
-      { week: '2026-W40', run_ts: '2026-09-28T09:00:00' },
-    ]);
+describe('runColumns', () => {
+  // One column per run that produced a change — replaces the old
+  // ISO-week bucketing entirely. A run with n_changed 0 must be invisible
+  // to the grid; it is still recorded in the runs table, just uncolumned.
+  test('a run with changes yields a column', () => {
+    const runs = [{ run_ts: '2026-09-21T09:00:00', n_changed: 3 }];
+    expect(A.runColumns(runs)).toEqual([{ run_ts: '2026-09-21T09:00:00' }]);
   });
 
-  test('a single run yields a single column', () => {
-    expect(A.weekColumns([{ run_ts: '2026-09-22T10:00:00' }]))
-      .toEqual([{ week: '2026-W39', run_ts: '2026-09-22T10:00:00' }]);
+  // This is the mutation the test exists to catch: a no-change run must
+  // add NO column. Asserted both by absence from the array and by exact
+  // length, so a change to the filter predicate cannot pass silently.
+  test('a run with n_changed 0 adds no column', () => {
+    const runs = [
+      { run_ts: '2026-09-07T09:00:00', n_changed: 2 },
+      { run_ts: '2026-09-14T09:00:00', n_changed: 0 },
+      { run_ts: '2026-09-21T09:00:00', n_changed: 1 },
+    ];
+    const cols = A.runColumns(runs);
+    expect(cols.length).toBe(2);
+    expect(cols.map((c) => c.run_ts)).toEqual([
+      '2026-09-07T09:00:00', '2026-09-21T09:00:00',
+    ]);
+    expect(cols.some((c) => c.run_ts === '2026-09-14T09:00:00')).toBe(false);
+  });
+
+  test('every run with no changes yields no columns at all', () => {
+    const runs = [
+      { run_ts: '2026-09-07T09:00:00', n_changed: 0 },
+      { run_ts: '2026-09-14T09:00:00', n_changed: 0 },
+    ];
+    expect(A.runColumns(runs)).toEqual([]);
   });
 
   test('no runs yields no columns', () => {
-    expect(A.weekColumns([])).toEqual([]);
+    expect(A.runColumns([])).toEqual([]);
   });
 
-  // A skipped week must be visible as a gap, not silently closed up —
-  // otherwise two non-adjacent weeks look consecutive.
-  test('weeks with no run appear as empty columns', () => {
+  // A run record with no n_changed field at all (defensive: older data,
+  // or a caller that omitted it) is treated as no change, not as a change.
+  test('a missing n_changed field is treated as no change', () => {
+    expect(A.runColumns([{ run_ts: '2026-09-21T09:00:00' }])).toEqual([]);
+  });
+
+  // Columns keep run order — every run that changed something, in the
+  // order the runs table returns them (ascending run_ts).
+  test('preserves run order across a year boundary', () => {
     const runs = [
-      { run_ts: '2026-09-07T09:00:00' }, // W37
-      { run_ts: '2026-09-21T09:00:00' }, // W39
+      { run_ts: '2026-12-28T09:00:00', n_changed: 1 },
+      { run_ts: '2027-01-04T09:00:00', n_changed: 2 },
     ];
-    expect(A.weekColumns(runs)).toEqual([
-      { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
-      { week: '2026-W38', run_ts: null },
-      { week: '2026-W39', run_ts: '2026-09-21T09:00:00' },
+    expect(A.runColumns(runs).map((c) => c.run_ts)).toEqual([
+      '2026-12-28T09:00:00', '2027-01-04T09:00:00',
     ]);
-  });
-
-  test('handles a year boundary without inventing weeks', () => {
-    const runs = [
-      { run_ts: '2026-12-28T09:00:00' }, // 2026-W53
-      { run_ts: '2027-01-04T09:00:00' }, // 2027-W01
-    ];
-    const cols = A.weekColumns(runs);
-    expect(cols.map((c) => c.week)).toEqual(['2026-W53', '2027-W01']);
   });
 });
 
@@ -129,8 +136,8 @@ describe('municipioGrid', () => {
       from_ts: '2026-09-07T09:00:00', until_ts: null },
   ];
   const columns = [
-    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
-    { week: '2026-W39', run_ts: '2026-09-21T09:00:00' },
+    { run_ts: '2026-09-07T09:00:00' },
+    { run_ts: '2026-09-21T09:00:00' },
   ];
 
   test('three lines per município per questionário', () => {
@@ -174,11 +181,14 @@ describe('municipioGrid', () => {
     expect(grid[0].cells).toEqual(['Não Iniciado', 'Não Iniciado']);
   });
 
-  test('an empty week column yields null cells in all three rows', () => {
-    const cols = [...columns, { week: '2026-W40', run_ts: null }];
+  // A column at a timestamp before the município's history opened (e.g. a
+  // município added to the response later than another's first run)
+  // still yields null cells, not a crash or a fabricated zero.
+  test('a column before a row opened yields null cells', () => {
+    const cols = [{ run_ts: '2026-01-01T00:00:00' }, ...columns];
     const grid = A.municipioGrid(rows, cols)
       .filter((g) => g.questionario === 'Básico');
-    for (const line of grid) expect(line.cells[2]).toBeNull();
+    for (const line of grid) expect(line.cells[0]).toBeNull();
   });
 
   // getAll() returns rows in insertion order, i.e. the earliest-inserted
@@ -313,8 +323,8 @@ describe('groupCounts', () => {
 
 describe('groupCountsByColumn', () => {
   const columns = [
-    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
-    { week: '2026-W39', run_ts: '2026-09-21T09:00:00' },
+    { run_ts: '2026-09-07T09:00:00' },
+    { run_ts: '2026-09-21T09:00:00' },
   ];
 
   // A município moving from Não Iniciado to Dig. Ibge (bucketed:
@@ -348,12 +358,16 @@ describe('groupCountsByColumn', () => {
     expect(concluido.pctCells[1]).toBeCloseTo(0.5);
   });
 
-  test('a null (gap) column yields null cells, not zero', () => {
-    const cols = [...columns, { week: '2026-W40', run_ts: null }];
+  // A column at a timestamp before any row opened yields zero counts (no
+  // rows are open yet) rather than null — situacaoAsOf legitimately
+  // returns an empty array, distinct from the "no column" case that
+  // runColumns() now handles upstream by omitting no-change runs entirely.
+  test('a column before any row opened yields zero counts, not null', () => {
+    const cols = [{ run_ts: '2026-01-01T00:00:00' }, ...columns];
     const out = A.groupCountsByColumn(allRows, ['agencia_nome'], cols);
     for (const row of out) {
-      expect(row.cells[2]).toBeNull();
-      expect(row.pctCells[2]).toBeNull();
+      expect(row.cells[0]).toBe(0);
+      expect(row.pctCells[0]).toBeNull();
     }
   });
 });

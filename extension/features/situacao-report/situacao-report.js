@@ -42,6 +42,7 @@
     .munic-pro-supervisao   { color: #006100; background: #C6EFCE; }
     .munic-pro-concluido    { color: #0B77A0; background: #CAEEFB; }
     .munic-pro-avisos { background: #FFEB9C; padding: 6px; margin-bottom: 8px; }
+    .munic-pro-ultima-execucao { color: #666; font-size: 12px; margin-top: 6px; }
     .munic-pro-vazio { color: #999; }
     /* Per-column filter row (change #5), ported from sigc-pro's own
        ultimo-movimento-map.js styling for the same control. Lighter than
@@ -142,19 +143,18 @@
     return `${(p * 100).toFixed(1).replace('.', ',')}%`;
   }
 
-  // Just the date the reading was taken, dd/mm/yyyy. The ISO week used to
-  // lead the header, but the week number is machinery — what a reader
-  // wants is when the column was measured.
-  //
-  // A week with no run has no date to show, so it keeps the week number:
-  // it is the only thing identifying WHICH gap this is, and the gap has to
-  // stay visible rather than being silently closed up.
+  // One column per run that produced a change (runColumns() already
+  // filtered out no-change runs), headed by the exact date and time the
+  // reading was taken — dd/mm/yyyy HH:MM. There is no week bucketing left
+  // to special-case: every column is a real run, so there is no gap
+  // column to label.
   function fmtColumnHeader(col) {
-    if (col.run_ts === null) return `${col.week}\n— sem coleta —`;
     const d = new Date(col.run_ts);
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
-    return `${dd}/${mm}/${d.getFullYear()}`;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${d.getFullYear()} ${hh}:${min}`;
   }
 
   // Display labels for the Indicador column. The internal names stay as
@@ -499,6 +499,21 @@
 
     panel.appendChild(el('div', { class: 'munic-pro-tabs' }, buttons));
     for (const p of panes) panel.appendChild(p);
+
+    // A run that changed nothing gets no column (change #3) — without
+    // this line, "the last run had no changes" would be indistinguishable
+    // on screen from "the extension has not run since the last column".
+    // A line under the table is enough; the CSV/JSON exports still carry
+    // the full run history including no-change runs.
+    if (data.lastRun) {
+      panel.appendChild(el('div', {
+        class: 'munic-pro-ultima-execucao',
+        text: data.lastRunChanged
+          ? `Última leitura: ${fmtColumnHeader({ run_ts: data.lastRun })}.`
+          : `Última leitura: ${fmtColumnHeader({ run_ts: data.lastRun })} ` +
+            '(sem mudanças — nenhuma coluna nova).',
+      }));
+    }
     return panel;
   }
 
@@ -564,7 +579,19 @@
         return;
       }
 
-      const runs = await STORE.getRuns();
+      // Only the UF is read from the page. The Agência dropdown is
+      // ignored on purpose: this report is UF-wide ("Críticas da UF"),
+      // and a snapshot narrowed to one agência would make the SCD diff
+      // close every município outside it.
+      const uf = FETCH_INTERNALS.readUf();
+      if (!uf) { say('Selecione a Unidade Estadual.'); return; }
+      const idUf = Number(uf);
+
+      // Freshness is scoped to the CURRENTLY SELECTED UF's own last run,
+      // not the newest run overall — otherwise switching the UF dropdown
+      // right after fetching a different UF would report stale data from
+      // that other UF as "fresh" for this one.
+      const runs = (await STORE.getRuns()).filter((r) => r.id_uf === idUf);
       const ultimo = runs.length ? runs[runs.length - 1].run_ts : null;
       const idadeMs = ultimo
         ? Date.now() - new Date(ultimo).getTime()
@@ -578,13 +605,6 @@
         say(`dados de ${min} min atrás (não rebuscado).`);
         return;
       }
-
-      // Only the UF is read from the page. The Agência dropdown is
-      // ignored on purpose: this report is UF-wide ("Críticas da UF"),
-      // and a snapshot narrowed to one agência would make the SCD diff
-      // close every município outside it.
-      const uf = FETCH_INTERNALS.readUf();
-      if (!uf) { say('Selecione a Unidade Estadual.'); return; }
 
       say('buscando…');
       const { rows, warnings } = await FETCH.fetchSituacao(uf);
@@ -610,11 +630,26 @@
       const existing = document.querySelector('.munic-pro-panel');
       if (existing) existing.remove();
 
-      const allRows = await STORE.getAll();
-      const runs = await STORE.getRuns();
+      // Filter by UF: each UF keeps its own independent SCD history (part
+      // of the store's row key), and this panel is a per-UF report — it
+      // must never aggregate two UFs' municípios into one table. The page
+      // may not have #IdUf (fetch layer absent, an unreadable select, or a
+      // stale test env) — readUf() then returns '', and Number('') is 0,
+      // NOT NaN, so the empty selection is checked explicitly rather than
+      // via Number.isNaN. An unreadable selection falls back to showing
+      // everything rather than showing nothing.
+      const fetchInternals = window.__municProSituacaoFetchInternals;
+      const ufSelecionada = fetchInternals && fetchInternals.readUf
+        ? fetchInternals.readUf() : '';
+      const idUfAtual = ufSelecionada === '' ? NaN : Number(ufSelecionada);
+      const filtrarPorUf = (rows) => (Number.isNaN(idUfAtual)
+        ? rows : rows.filter((r) => r.id_uf === idUfAtual));
+
+      const allRows = filtrarPorUf(await STORE.getAll());
+      const runs = filtrarPorUf(await STORE.getRuns());
       if (!runs.length) { say('Sem histórico ainda.'); return; }
 
-      const columns = AGG.weekColumns(runs);
+      const columns = AGG.runColumns(runs);
       const current = AGG.situacaoAsOf(allRows, runs[runs.length - 1].run_ts);
       // assistencia_nome is not a stored field — it is derived from the
       // agência code through the vendored lookup.
@@ -643,6 +678,7 @@
         porAgenciaPct: porAgencia,
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
+        lastRunChanged: (runs[runs.length - 1].n_changed || 0) > 0,
       });
 
       const card = bar.closest('.card') || bar.parentElement.parentElement;

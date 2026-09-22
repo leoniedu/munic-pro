@@ -27,13 +27,25 @@ function stored(r, from_ts) {
 }
 
 describe('rowKey', () => {
-  test('is município plus questionário', () => {
-    expect(rowKey(row('2900702', 'Básico', 'Não Iniciado'))).toBe('2900702|Básico');
+  test('is UF plus município plus questionário', () => {
+    expect(rowKey(row('2900702', 'Básico', 'Não Iniciado'))).toBe('BA|2900702|Básico');
   });
 
   test('distinguishes the two questionários of one município', () => {
     expect(rowKey(row('2900702', 'Básico', 'X')))
       .not.toBe(rowKey(row('2900702', 'Suplementar', 'X')));
+  });
+
+  // The bug this exists to catch: município códigos are only unique
+  // WITHIN a UF (IBGE reuses the trailing digits across states), so two
+  // different UFs can carry the same município_codigo. If UF were ever
+  // dropped from rowKey, these two rows would collide onto the same key
+  // and the second would look like a value-changed update to the first
+  // instead of two independent municípios in two independent histories.
+  test('distinguishes the same município código in two different UFs', () => {
+    const ba = row('2900702', 'Básico', 'X', { uf_sigla: 'BA' });
+    const sp = row('2900702', 'Básico', 'X', { uf_sigla: 'SP' });
+    expect(rowKey(ba)).not.toBe(rowKey(sp));
   });
 });
 
@@ -63,7 +75,7 @@ describe('diffSnapshot', () => {
     const before = row('2900702', 'Básico', 'Não Iniciado');
     const after = row('2900702', 'Básico', 'Dig. Ibge');
     const r = diffSnapshot([stored(before, TS1)], [after], TS2);
-    expect(r.toClose).toEqual([{ key: '2900702|Básico', until_ts: TS2 }]);
+    expect(r.toClose).toEqual([{ key: 'BA|2900702|Básico', until_ts: TS2 }]);
     expect(r.toInsert.length).toBe(1);
     expect(r.toInsert[0].situacao).toBe('Dig. Ibge');
     expect(r.toInsert[0].from_ts).toBe(TS2);
@@ -82,7 +94,7 @@ describe('diffSnapshot', () => {
     const gone = row('2900702', 'Básico', 'Não Iniciado');
     const kept = row('2902054', 'Básico', 'Não Iniciado');
     const r = diffSnapshot([stored(gone, TS1), stored(kept, TS1)], [kept], TS2);
-    expect(r.toClose).toEqual([{ key: '2900702|Básico', until_ts: TS2 }]);
+    expect(r.toClose).toEqual([{ key: 'BA|2900702|Básico', until_ts: TS2 }]);
     expect(r.toInsert.length).toBe(0);
     expect(r.nChanged).toBe(1);
   });
@@ -106,7 +118,7 @@ describe('diffSnapshot', () => {
       [basicoAfter, suplBefore],
       TS2,
     );
-    expect(r.toClose).toEqual([{ key: '2900702|Básico', until_ts: TS2 }]);
+    expect(r.toClose).toEqual([{ key: 'BA|2900702|Básico', until_ts: TS2 }]);
     expect(r.toInsert.length).toBe(1);
     expect(r.toInsert[0].questionario).toBe('Básico');
   });
@@ -121,5 +133,35 @@ describe('diffSnapshot', () => {
     const r = diffSnapshot([stored(before, TS1)], [after], TS2);
     expect(r.toInsert.length).toBe(0);
     expect(r.toClose.length).toBe(0);
+  });
+
+  // diffSnapshot itself is UF-agnostic — it closes/inserts by whatever
+  // `current` it is handed, which is now the CALLER's job to scope to one
+  // UF (see situacao-bridge.js's saveSnapshot). What THIS test pins is
+  // the key-collision half of the bug: two different UFs sharing a
+  // município código must never be treated as the same row. If UF were
+  // dropped from rowKey, SP's incoming row would match BA's stored row
+  // on '2900702|Básico' — read as an unchanged município rather than a
+  // new one, and BA's row would silently absorb SP's data.
+  test('a município código shared by two UFs is never matched cross-UF', () => {
+    const ba = stored(row('2900702', 'Básico', 'Não Iniciado', { uf_sigla: 'BA' }), TS1);
+    const spIncoming = row('2900702', 'Básico', 'Não Iniciado', { uf_sigla: 'SP' });
+    const r = diffSnapshot([ba], [spIncoming], TS2);
+    // Correct outcome: SP's row is a brand new key (never seen before),
+    // and BA's row is closed as "vanished from this snapshot" — because
+    // this call was handed BA's row as `current` despite the incoming
+    // snapshot being SP's. That mismatch is exactly what
+    // situacao-bridge.js's saveSnapshot must never do in production (see
+    // its own UF-scoping test); diffSnapshot's job here is only to prove
+    // the two rows are never merged into one.
+    expect(r.toInsert.length).toBe(1);
+    expect(r.toInsert[0].uf_sigla).toBe('SP');
+    expect(r.toClose).toEqual([{ key: 'BA|2900702|Básico', until_ts: TS2 }]);
+    // The mutation this catches: if rowKey dropped uf_sigla, both rows
+    // would share the key '2900702|Básico' — sameValues() would then see
+    // them as textually identical (situação, críticas all equal) and
+    // diffSnapshot would report NO change at all, silently discarding
+    // that BA and SP are different municípios.
+    expect(r.nChanged).toBeGreaterThan(0);
   });
 });
