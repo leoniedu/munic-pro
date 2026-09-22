@@ -104,6 +104,10 @@
     a.style.display = 'inline-block';
     a.style.marginLeft = '10px';
     a.style.marginBottom = '6px';
+    // "Relatório-PRO" is longer than SIGC's own labels and wrapped onto
+    // two lines inside the button, which made it twice as tall as the
+    // others in the row.
+    a.style.whiteSpace = 'nowrap';
     a.style.cursor = 'pointer';
     a.style.background = PRO_BLUE;
     a.style.borderColor = PRO_BLUE;
@@ -467,9 +471,11 @@
     //
     // Plain flex instead, so the row is correct wherever it is mounted:
     // wraps rather than overflowing, and stays inside its parent's width.
+    // A plain block inside SIGC's own col-12, which is already
+    // right-aligned (text-sm-end) and already spans the card. Ours adds
+    // only the gap above, so it reads as a second line of that row.
     const bar = el('div', { id: 'munic-pro-actions' });
     bar.style.marginTop = '10px';
-    bar.style.textAlign = 'right';
 
     // A plain block with text-align:right, NOT a flex row.
     //
@@ -660,11 +666,18 @@
   // Falls back to the button's own parent if the expected col-12 wrapper
   // is absent, so a markup change degrades to a working placement rather
   // than to nothing.
+  // The div.col-12 that already holds SIGC's buttons — we append INTO it,
+  // so our buttons are simply a second line of the same row.
+  //
+  // Earlier versions climbed to that div's PARENT and appended there,
+  // which put our block in whatever container happened to wrap the row.
+  // When that container was narrow, the buttons stacked into a column
+  // beside SIGC's row instead of below it. The col-12 already spans the
+  // card and already right-aligns its contents; nothing else is needed.
   function actionsAnchor() {
     const btn = document.getElementById(ANCHOR_ID);
     if (!btn) return null;
-    const row = btn.closest('div.col-12');
-    return (row ? row.parentElement : null) || btn.parentElement;
+    return btn.closest('div.col-12') || btn.parentElement;
   }
 
   if (typeof document !== 'undefined' && document.body) {

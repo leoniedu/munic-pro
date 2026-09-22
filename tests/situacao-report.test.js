@@ -441,10 +441,13 @@ describe('button styling and placement', () => {
   // Flex was tried and broke: the status div became a flex ITEM, claimed a
   // whole slot as a block-level child, and forced a wrap that stacked the
   // buttons vertically in the space left over.
-  test('the button row is a plain right-aligned block, not flex', () => {
+  test('the button row is a plain block, not flex', () => {
     const bar = R.buildActions();
     expect(bar.style.display).not.toBe('flex');
-    expect(bar.style.textAlign).toBe('right');
+    // Alignment is INHERITED from SIGC's div.col-12 (text-sm-end), which
+    // we append into — setting our own would be a second source of truth
+    // for the same thing.
+    expect(bar.style.textAlign).toBe('');
   });
 
   test('the status is outside the buttons own row', () => {
@@ -486,18 +489,17 @@ describe('actionsAnchor', () => {
   // The new contract anchors to the row's PARENT and appends into it, so
   // our row becomes one more child of the same container SIGC's row is
   // in — a full-width row below it, still inside the card.
-  test('resolves to the parent of the containing col-12 row', () => {
+  test('resolves to the col-12 that holds SIGC own buttons', () => {
+    // We append INTO that div, so our buttons are a second line of the
+    // same row. Climbing to its parent put them in whatever container
+    // wrapped the row, which when narrow stacked them into a column.
     document.body.innerHTML =
-      '<div class="card"><div class="card-body">' +
-      '<div class="row">' +
-      '<div class="col-12 text-sm-end">' +
+      '<div class="box-footer"><div class="col-12 text-sm-end">' +
       '<a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
-      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></div>' +
-      '</div></div></div>';
-    const row = document.querySelector('div.col-12');
+      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></div></div>';
     const anchor = R.actionsAnchor();
-    expect(anchor).toBe(row.parentElement);
-    expect(anchor.className).toContain('row');
+    expect(anchor.className).toContain('col-12');
+    expect(anchor.querySelector('#btnAbrirExcel')).toBeTruthy();
   });
 
   // Appending our row into that parent must not escape the card: the
@@ -1042,5 +1044,14 @@ describe('group tab argument order', () => {
     const out = window.__municProSituacaoAggregate.groupCountsByColumn(rows, ['agencia_nome'], cols);
     expect(out.length).toBeGreaterThan(0);
     expect(out[0].group).toBe('ALAGOINHAS');
+  });
+});
+
+describe('button label wrapping', () => {
+  // "Relatório-PRO" wrapped inside its button on the live page, making it
+  // two lines tall next to the single-line buttons beside it.
+  test('labels do not wrap inside the button', () => {
+    expect(R.makeButton('Relatório-PRO', () => {}).style.whiteSpace)
+      .toBe('nowrap');
   });
 });
