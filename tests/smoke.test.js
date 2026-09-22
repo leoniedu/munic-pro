@@ -94,3 +94,27 @@ test('every file the manifest references exists on disk', () => {
     expect(existsSync(`extension/${rel}`)).toBe(true);
   }
 });
+
+// The SIGC report opens through the F5 webtop, which puts it in a frame.
+// With all_frames unset (the default, false) the two content-script
+// entries could land in DIFFERENT documents — MAIN in one, the ISOLATED
+// bridge in another — and window.postMessage to location.origin never
+// crosses between them. The symptom was "a extensão não respondeu
+// (camada de armazenamento indisponível)": MAIN present, bridge silent.
+//
+// Both entries must inject everywhere. The UI still mounts only once,
+// because onSituacaoPage() requires SIGC's own four buttons to be in THIS
+// document — so the frame without them builds nothing.
+test('both content scripts inject into all frames', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  for (const cs of manifest.content_scripts) {
+    expect(cs.all_frames).toBe(true);
+  }
+});
+
+test('the two entries match the same hosts, so they share a document', () => {
+  const [a, b] = JSON.parse(
+    readFileSync('extension/manifest.json', 'utf8'),
+  ).content_scripts;
+  expect(a.matches.sort()).toEqual(b.matches.sort());
+});

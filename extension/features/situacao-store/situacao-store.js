@@ -54,7 +54,9 @@
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(
-          'A extensão não respondeu (camada de armazenamento indisponível).',
+          'A extensão não respondeu (camada de armazenamento indisponível). ' +
+          'Recarregue a página; se persistir, recarregue a extensão em ' +
+          'chrome://extensions.',
         ));
       }, CALL_TIMEOUT_MS);
       pending.set(id, {
