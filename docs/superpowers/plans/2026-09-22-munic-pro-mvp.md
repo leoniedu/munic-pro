@@ -972,7 +972,7 @@ Create `extension/features/situacao-store/situacao-diff.js`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-diff.test.js`
-Expected: PASS, 10 tests
+Expected: PASS, 9 tests
 
 Note the `nChanged` assertion in the "unchanged run" test: `toClose` and
 `toInsert` are both empty, so it is 0.
@@ -1170,7 +1170,7 @@ Create `extension/features/situacao-store/situacao-store.js`:
 // API, so it works from the MAIN world where chrome.* does not.
 //
 // This directory is storage-sanctioned by scripts/check-network.sh and
-// must never call fetch() — it has no business touching the network.
+// must never touch the network — no fetching of any kind belongs here.
 (function () {
   'use strict';
 
@@ -1315,7 +1315,7 @@ Create `extension/features/situacao-store/situacao-store.js`:
 - [ ] **Step 6: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-store.test.js`
-Expected: PASS, 10 tests
+Expected: PASS, 9 tests
 
 - [ ] **Step 7: Run the full suite and the gate**
 
@@ -1562,7 +1562,7 @@ Create `extension/features/situacao-fetch/situacao-fetch.js`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-fetch.test.js`
-Expected: PASS, 10 tests
+Expected: PASS, 9 tests
 
 - [ ] **Step 5: Run the full suite and the gate**
 
