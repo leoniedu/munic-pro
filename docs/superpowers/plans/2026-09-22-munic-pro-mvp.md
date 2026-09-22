@@ -1562,7 +1562,7 @@ Create `extension/features/situacao-fetch/situacao-fetch.js`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-fetch.test.js`
-Expected: PASS, 9 tests
+Expected: PASS, 11 tests
 
 - [ ] **Step 5: Run the full suite and the gate**
 
