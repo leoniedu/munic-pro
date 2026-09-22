@@ -11,7 +11,20 @@
 // This script is the fix: it runs in the ISOLATED world (the extension's
 // own origin) and is the ONLY place IndexedDB is touched. The MAIN-world
 // situacao-store.js keeps the same public API, but every call is now a
-// window.postMessage request answered here.
+// request carried over a shared DOM attribute, not window.postMessage.
+//
+// Why not postMessage: this portal is served through F5 BIG-IP APM's
+// JavaScript rewriting layer (cache-fm-Modern.js), which wraps the page's
+// own globals — F5_Invoke_addEventListener, F5_Invoke_setTimeout, etc.
+// MAIN-world scripts run inside that rewritten environment; the ISOLATED
+// world does not. A postMessage/addEventListener('message') round trip
+// between the two does not reliably survive it — confirmed live on this
+// exact portal (the MAIN side timed out on every call, "storage layer
+// unavailable"). sigc-pro hit the same class of problem for a MAIN<->
+// ISOLATED handoff (see ultimo-movimento-map-relay.js) and its fix was to
+// use the DOM instead of an event: both worlds share `document`, and a
+// DOM attribute has no delivery race the way postMessage does. This file
+// applies the same fix to a full request/response RPC.
 //
 // This directory is storage-sanctioned by scripts/check-network.sh and
 // must never touch the network — no fetching of any kind belongs here.
@@ -27,15 +40,17 @@
   const STORE_SITUACAO = 'situacao';
   const STORE_RUNS = 'runs';
 
-  // Message channel contract with situacao-store.js (MAIN world):
-  //   request:  { source: 'munic-pro-main', id, method, args }
-  //   response: { source: 'munic-pro-isolated', id, result } or { ..., error }
+  // Transport contract with situacao-store.js (MAIN world), carried on
+  // document.documentElement's dataset rather than postMessage:
+  //   request attribute (municProReq):  JSON { id, method, args }
+  //   reply attribute   (municProReply): JSON { id, result } or { id, error }
   //
-  // Origin-checked on both ends (window.postMessage(..., location.origin)
-  // and a matching event.origin check here) so no other frame or page
-  // script can drive this database.
-  const SOURCE_MAIN = 'munic-pro-main';
-  const SOURCE_ISOLATED = 'munic-pro-isolated';
+  // Each attribute is a SINGLE slot holding the CURRENT in-flight
+  // request/reply. situacao-store.js is responsible for not clobbering a
+  // slot that already holds an unanswered request — see its own comment
+  // for how it serialises calls to guarantee that.
+  const ATTR_REQ = 'data-munic-pro-req';
+  const ATTR_REPLY = 'data-munic-pro-reply';
 
   function promisify(req) {
     return new Promise((resolve, reject) => {
@@ -174,44 +189,67 @@
   }
 
   // openDb is deliberately NOT in the RPC table: an IDBDatabase handle
-  // cannot cross postMessage's structured-clone boundary, and nothing on
-  // the MAIN side needs the handle itself — only the operations below.
+  // cannot cross the JSON-over-DOM-attribute boundary, and nothing on the
+  // MAIN side needs the handle itself — only the operations below.
   const METHODS = { saveSnapshot, getCurrent, getAll, getRuns, clearAll };
 
-  window.addEventListener('message', (event) => {
-    // Same-origin only: the extension's own MAIN-world script posts with
-    // location.origin as the target, and a legitimate request always
-    // arrives with that same origin as its source.
-    if (event.origin !== location.origin) return;
-    const msg = event.data;
-    if (!msg || msg.source !== SOURCE_MAIN) return;
+  function writeReply(payload) {
+    document.documentElement.setAttribute(ATTR_REPLY, JSON.stringify(payload));
+  }
+
+  function handleRequest(msg) {
+    // Cleared as soon as it's read, not after the reply is written: this
+    // is what lets the NEXT request use the exact same JSON (e.g. the
+    // same no-arg method called twice in a row) and still produce a DOM
+    // mutation — setAttribute() with an unchanged value is a no-op and
+    // fires no MutationObserver callback, so the slot must go through an
+    // absent state in between.
+    document.documentElement.removeAttribute(ATTR_REQ);
 
     const { id, method, args } = msg;
     const fn = METHODS[method];
     if (typeof fn !== 'function') {
-      window.postMessage(
-        { source: SOURCE_ISOLATED, id, error: `Método desconhecido: ${method}` },
-        location.origin,
-      );
+      writeReply({ id, error: `Método desconhecido: ${method}` });
       return;
     }
 
     Promise.resolve()
       .then(() => fn(...(args || [])))
-      .then((result) => {
-        window.postMessage({ source: SOURCE_ISOLATED, id, result }, location.origin);
-      })
+      .then((result) => writeReply({ id, result }))
       .catch((err) => {
-        window.postMessage(
-          { source: SOURCE_ISOLATED, id, error: String((err && err.message) || err) },
-          location.origin,
-        );
+        writeReply({ id, error: String((err && err.message) || err) });
       });
+  }
+
+  // A MutationObserver on documentElement's attributes, filtered to the
+  // one request attribute, rather than a 'message' listener: both worlds
+  // share the DOM, so this fires regardless of whatever the page's F5
+  // rewriter does to window-level events. MutationObserver callbacks are
+  // microtask-queued by the spec, not synchronous with the attribute
+  // write, so this never assumes the reaction happens inside the same
+  // tick as situacao-store.js's write.
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type !== 'attributes') continue;
+      const raw = document.documentElement.getAttribute(ATTR_REQ);
+      if (!raw) continue; // cleared already, or another attribute's mutation
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        continue; // not one of ours / malformed — ignore rather than throw
+      }
+      handleRequest(msg);
+    }
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [ATTR_REQ],
   });
 
   // Exposed only for the ISOLATED-world test suite, which exercises the
-  // real IndexedDB logic directly rather than through postMessage.
+  // real IndexedDB logic directly rather than through the DOM channel.
   window.__municProSituacaoBridge = {
-    ...METHODS, openDb, SOURCE_MAIN, SOURCE_ISOLATED,
+    ...METHODS, openDb, ATTR_REQ, ATTR_REPLY,
   };
 })();

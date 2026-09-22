@@ -3,15 +3,35 @@
 // The actual IndexedDB lives in the extension's own origin, owned by the
 // ISOLATED-world situacao-bridge.js — this file runs in the MAIN world
 // (alongside the page's own scripts) and never touches indexedDB itself.
-// Every call here is a window.postMessage request answered by the bridge.
+// Every call here is a request/reply pair carried on a shared DOM
+// attribute (document.documentElement.dataset), answered by the bridge.
 //
-// Why the split exists: indexedDB.open() from the MAIN world opens a
-// database on the PAGE's origin, not the extension's. The manifest matches
-// three hosts, so that used to mean up to three separate, silently
-// diverging histories — and clearing site data for the page (the standard
-// fix for an F5 login loop) destroyed the history along with it. Routing
-// every call through the ISOLATED world keeps the data in the extension's
-// own origin, one history, regardless of which matched host is open.
+// Why not window.postMessage: this portal is served through F5 BIG-IP
+// APM's JavaScript rewriting layer (cache-fm-Modern.js), which wraps the
+// page's own globals (F5_Invoke_addEventListener, F5_Invoke_setTimeout,
+// ...). MAIN-world code runs inside that rewritten environment; the
+// ISOLATED world does not. Live on this exact portal, a postMessage sent
+// from here was never observed by the ISOLATED listener — every call
+// timed out with "storage layer unavailable", confirmed via the console
+// stack trace pointing at the rewriter. sigc-pro documents the same class
+// of failure for a CustomEvent between the two worlds (see
+// ultimo-movimento-map-relay.js) and fixed it by moving the handoff onto
+// the DOM, which both worlds share regardless of the rewriter. This file
+// does the same for the full request/response RPC.
+//
+// Concurrency: the request/reply attributes are each a SINGLE slot, so
+// two requests in flight at once would clobber each other. Rather than
+// keying the slot by request id (which would need array/object bookkeeping
+// on both ends for a case that barely occurs), calls are queued here: at
+// most one request is ever on the wire, and the next one is only written
+// once the previous reply has arrived. The panel's own calls are already
+// sequential (await chains), so the only real risk was a stray
+// double-click firing two independent call chains — the queue serialises
+// those too, at the cost of the second chain waiting slightly longer.
+//
+// Why not on the bridge side: only the ISOLATED end can safely order
+// writes to the reply attribute; queueing has to happen wherever requests
+// are minted, i.e. here.
 //
 // This directory is storage-sanctioned by scripts/check-network.sh and
 // must never touch the network — no fetching of any kind belongs here.
@@ -22,24 +42,14 @@
 
   if (window.__municProSituacaoStore) return;
 
-  const SOURCE_MAIN = 'munic-pro-main';
-  const SOURCE_ISOLATED = 'munic-pro-isolated';
+  const ATTR_REQ = 'data-munic-pro-req';
+  const ATTR_REPLY = 'data-munic-pro-reply';
 
   let nextId = 1;
-  const pending = new Map();
-
-  window.addEventListener('message', (event) => {
-    // Same-origin only: a legitimate reply comes from this same page's
-    // ISOLATED-world content script, which always posts to location.origin.
-    if (event.origin !== location.origin) return;
-    const msg = event.data;
-    if (!msg || msg.source !== SOURCE_ISOLATED) return;
-    const waiting = pending.get(msg.id);
-    if (!waiting) return;
-    pending.delete(msg.id);
-    if ('error' in msg) waiting.reject(new Error(msg.error));
-    else waiting.resolve(msg.result);
-  });
+  // At most one entry: the id/resolve/reject of the request currently on
+  // the wire. Anything queued behind it waits in `queue` instead.
+  let inFlight = null;
+  const queue = [];
 
   // How long a call may wait for the ISOLATED side before giving up. The
   // bridge script loads at document_start and should always be listening
@@ -48,22 +58,75 @@
   // hanging a button click forever.
   const CALL_TIMEOUT_MS = 10000;
 
+  // Distinguishes "the bridge script never even loaded" (documentElement
+  // has neither of its attributes touched, ever) from "it loaded but this
+  // one call is slow/stuck" — cheap to track because the reply attribute
+  // is written by ANY completed call, not just the current one.
+  let everSawReply = false;
+
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type !== 'attributes') continue;
+      const raw = document.documentElement.getAttribute(ATTR_REPLY);
+      if (!raw) continue;
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      everSawReply = true;
+      if (!inFlight || msg.id !== inFlight.id) continue; // stale/foreign reply
+      const { resolve, reject } = inFlight;
+      inFlight = null;
+      document.documentElement.removeAttribute(ATTR_REPLY);
+      if ('error' in msg) reject(new Error(msg.error));
+      else resolve(msg.result);
+      pump();
+    }
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [ATTR_REPLY],
+  });
+
+  function pump() {
+    if (inFlight || queue.length === 0) return;
+    const next = queue.shift();
+    inFlight = next;
+    const timer = setTimeout(() => {
+      if (!inFlight || inFlight.id !== next.id) return;
+      inFlight = null;
+      const reason = everSawReply
+        ? 'A extensão não respondeu a tempo (camada de armazenamento ' +
+          'ocupada ou travada).'
+        : 'A extensão não respondeu (camada de armazenamento indisponível).';
+      next.reject(new Error(
+        `${reason} Recarregue a página; se persistir, recarregue a ` +
+        'extensão em chrome://extensions.',
+      ));
+      pump();
+    }, CALL_TIMEOUT_MS);
+    next.clearTimer = () => clearTimeout(timer);
+    document.documentElement.setAttribute(
+      ATTR_REQ,
+      JSON.stringify({ id: next.id, method: next.method, args: next.args }),
+    );
+  }
+
   function call(method, ...args) {
     const id = nextId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error(
-          'A extensão não respondeu (camada de armazenamento indisponível). ' +
-          'Recarregue a página; se persistir, recarregue a extensão em ' +
-          'chrome://extensions.',
-        ));
-      }, CALL_TIMEOUT_MS);
-      pending.set(id, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      window.postMessage({ source: SOURCE_MAIN, id, method, args }, location.origin);
+      const entry = {
+        id,
+        method,
+        args,
+        resolve: (v) => { entry.clearTimer(); resolve(v); },
+        reject: (e) => { entry.clearTimer(); reject(e); },
+        clearTimer: () => {},
+      };
+      queue.push(entry);
+      pump();
     });
   }
 

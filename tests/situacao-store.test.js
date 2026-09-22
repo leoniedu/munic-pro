@@ -3,13 +3,19 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 // Both scripts loaded into the SAME window here, exactly as they are in
 // the browser: MAIN and ISOLATED are different JS realms that do NOT
 // share window.__municPro* globals, but they DO share the page's
-// postMessage/addEventListener('message') channel — which is the one
-// thing this test exercises. situacao-store.js (the client, "S" below)
-// never touches indexedDB directly; every call is a postMessage request
-// answered by situacao-bridge.js's real IndexedDB logic. A test that
-// bypassed the bridge and asserted on window.__municProSituacaoBridge
-// directly would prove nothing about the postMessage path actually
-// working end to end, so this suite deliberately goes through S only.
+// `document` — which is the one thing this test exercises.
+// situacao-store.js (the client, "S" below) never touches indexedDB
+// directly; every call is a request/reply pair carried on
+// document.documentElement's data-munic-pro-req/-reply attributes,
+// answered by situacao-bridge.js's real IndexedDB logic via a
+// MutationObserver. A test that bypassed the bridge and asserted on
+// window.__municProSituacaoBridge directly would prove nothing about the
+// DOM-attribute path actually working end to end, so this suite
+// deliberately goes through S only.
+//
+// happy-dom (tests/setup.js) implements both MutationObserver and
+// dataset, which is what makes this end-to-end path testable at all
+// without a real browser.
 await import('../extension/features/situacao-store/situacao-diff.js');
 await import('../extension/features/situacao-store/situacao-bridge.js');
 await import('../extension/features/situacao-store/situacao-store.js');
@@ -165,6 +171,102 @@ describe('clearAll', () => {
   });
 });
 
+describe('DOM-attribute transport', () => {
+  // THE current bug's shape: the bridge writes a correct reply to
+  // data-munic-pro-reply, but if S never actually reads it back (e.g. its
+  // MutationObserver isn't wired to the right attribute, or it reads the
+  // wrong one), the call hangs and times out even though the answer was
+  // sitting right there on documentElement the whole time. This asserts
+  // on the attribute directly, independent of S's own promise resolving,
+  // so a mutation that broke S's *reading* half (but left the bridge's
+  // writing half intact) still fails it.
+  test('the bridge writes its reply to the documented reply attribute', async () => {
+    await S.clearAll();
+
+    // A second, independent observer on the SAME attribute S itself
+    // watches, with oldValue recording turned on: MutationObserver
+    // callbacks run in registration order within the same microtask
+    // batch, so by the time THIS callback fires, S's own observer has
+    // already read and removed the attribute — reading the live
+    // attribute here would always see it gone. The mutation record's
+    // oldValue is what proves the bridge actually wrote the reply JSON,
+    // independent of S's own promise resolving at all, so a mutation
+    // that broke S's read side (but left the bridge's write side intact)
+    // still fails this.
+    const seen = new Promise((resolve) => {
+      const obs = new MutationObserver((mutations) => {
+        const withValue = mutations.find((m) => m.oldValue);
+        if (withValue) { obs.disconnect(); resolve(withValue.oldValue); }
+      });
+      obs.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-munic-pro-reply'],
+        attributeOldValue: true,
+      });
+    });
+
+    const done = S.getRuns();
+    const raw = await seen;
+    const parsed = JSON.parse(raw);
+    expect(parsed.result).toEqual([]);
+    await done;
+  });
+
+  // Two concurrent calls must each get back their OWN result, matched by
+  // id, not whichever reply happens to land in the single reply slot —
+  // this is the collision risk called out for a single-attribute
+  // transport. saveSnapshot and getRuns return very different shapes, so
+  // a mismatch (call A resolving with call B's answer) is unmistakable.
+  test('two concurrent calls each resolve with their own result, not a mismatched one', async () => {
+    await S.clearAll();
+    const [saveResult, current] = await Promise.all([
+      S.saveSnapshot([row('2900702', 'Básico', 'Não Iniciado')], TS1, []),
+      S.getCurrent(),
+    ]);
+    expect(saveResult).toEqual({ nChanged: 1, nRows: 1 });
+    // getCurrent's own result must be an array (its actual return shape),
+    // never saveSnapshot's {nChanged, nRows} object — which is exactly
+    // what an id mismatch would produce if the two calls' replies were
+    // swapped.
+    expect(Array.isArray(current)).toBe(true);
+  });
+
+  test('three overlapping calls resolve independently, none stealing another\'s reply', async () => {
+    await S.saveSnapshot([row('2900702', 'Básico', 'X')], TS1, []);
+    const [all, runs, cur] = await Promise.all([
+      S.getAll(),
+      S.getRuns(),
+      S.getCurrent(),
+    ]);
+    expect(all.length).toBe(1);
+    expect(runs.length).toBe(1);
+    expect(cur.length).toBe(1);
+  });
+
+  // getAll() can return tens of thousands of rows as one JSON string in
+  // a DOM attribute. This proves a realistic-sized payload round-trips
+  // intact rather than being silently truncated by some length limit —
+  // measured at ~6.8M characters for 20,000 rows in this codebase's row
+  // shape, comfortably inside what a DOM attribute value can hold.
+  test('a 20,000-row payload round-trips intact through the attribute channel', async () => {
+    await S.clearAll();
+    const bigSnapshot = Array.from({ length: 20000 }, (_, i) =>
+      row(String(2900000 + i), 'Básico', 'Não Iniciado', { municipio_nome: `Município ${i}` }));
+    await S.saveSnapshot(bigSnapshot, TS1, []);
+
+    const all = await S.getAll();
+    expect(all.length).toBe(20000);
+    // Spot-check first, last and a middle row: a truncated JSON string
+    // would either fail to parse at all (rejecting the call) or silently
+    // drop trailing rows, which a length check alone would not catch if
+    // it happened to drop from the middle.
+    expect(all[0].municipio_nome).toBe('Município 0');
+    expect(all[9999].municipio_nome).toBe('Município 9999');
+    expect(all[19999].municipio_nome).toBe('Município 19999');
+    expect(all[19999].municipio_codigo).toBe(String(2900000 + 19999));
+  }, 15000);
+});
+
 describe('cross-origin storage: MAIN never touches indexedDB directly', () => {
   // The whole point of the MAIN/ISOLATED split: situacao-store.js (S, the
   // MAIN-world client) must hold NO reference to indexedDB — every read
@@ -184,13 +286,13 @@ describe('cross-origin storage: MAIN never touches indexedDB directly', () => {
 
   // The mutation this is built to catch: if saveSnapshot() (or any of
   // S's other methods) were changed back to call indexedDB.open(...)
-  // directly instead of posting to the bridge, the source-shape check
+  // directly instead of going through the bridge, the source-shape check
   // above would fail immediately. As a second, behavioural line of
-  // defence: disabling the bridge's message listener must make every
-  // call fail (time out) rather than silently succeed via a local
-  // fallback — a silent local fallback is indistinguishable from "it
-  // still works" and is exactly the failure mode a source check alone
-  // could miss if some OTHER code path grew a direct indexedDB call.
+  // defence: disabling the bridge's request channel must make every call
+  // fail (time out) rather than silently succeed via a local fallback —
+  // a silent local fallback is indistinguishable from "it still works"
+  // and is exactly the failure mode a source check alone could miss if
+  // some OTHER code path grew a direct indexedDB call.
   test('calls fail loudly, not silently, when the bridge is unreachable', async () => {
     // Longer than S's own CALL_TIMEOUT_MS (10s), which this test waits
     // out deliberately: proving that an unanswered call REJECTS (rather
@@ -198,23 +300,25 @@ describe('cross-origin storage: MAIN never touches indexedDB directly', () => {
     // fallback) requires actually reaching that timeout.
     const B = window.__municProSituacaoBridge;
     // Wipe any real history and IndexedDB access the bridge might use as
-    // a fallback, so a passing call could only mean postMessage reached
-    // a listener — never a coincidental local read.
+    // a fallback, so a passing call could only mean the DOM channel
+    // actually reached a listener — never a coincidental local read.
     await B.clearAll();
 
-    // situacao-bridge.js's own 'message' listener is anonymous and can't
-    // be removeEventListener'd from outside, so this test simulates its
-    // absence by swallowing S's own requests before they reach it — the
-    // same observable failure as the bridge never having loaded.
-    const originalPostMessage = window.postMessage.bind(window);
-    window.postMessage = (msg, targetOrigin, ...rest) => {
-      if (msg && msg.source === 'munic-pro-main') return; // swallowed
-      originalPostMessage(msg, targetOrigin, ...rest);
+    // situacao-bridge.js's own MutationObserver can't be disconnected
+    // from outside, so this test simulates its absence by intercepting
+    // documentElement.setAttribute and swallowing S's own request writes
+    // before the observer ever sees them — the same observable failure
+    // as the bridge never having loaded.
+    const el = document.documentElement;
+    const originalSetAttribute = el.setAttribute.bind(el);
+    el.setAttribute = (name, value) => {
+      if (name === 'data-munic-pro-req') return; // swallowed
+      originalSetAttribute(name, value);
     };
     try {
       await expect(S.getAll()).rejects.toThrow();
     } finally {
-      window.postMessage = originalPostMessage;
+      el.setAttribute = originalSetAttribute;
     }
   }, 15000);
 });
