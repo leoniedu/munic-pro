@@ -35,6 +35,12 @@ ao lado dos nativos:
 - **Backup JSON** — o histórico inteiro num arquivo, para que não se
   perca se os dados do navegador forem limpos.
 
+Na página de **Opções** da extensão (`chrome://extensions`, ícone da
+extensão, abre em aba própria): status do que está guardado (leituras,
+linhas, UFs, primeira/última data), o mesmo Backup JSON do painel,
+**importação** de um Backup JSON de volta (mescla sem duplicar linhas já
+presentes) e **limpar tudo**, com confirmação.
+
 O painel tem cinco abas: **Município** (uma linha por município,
 questionário e indicador, uma coluna por data, colorida por situação),
 **Assistência** e **Assistência %**, **Agência** e **Agência %**.

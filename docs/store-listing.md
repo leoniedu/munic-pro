@@ -42,6 +42,12 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
   `;`, com BOM, pronto para o Excel brasileiro).
 • Backup JSON — exporta o histórico completo guardado, como cópia de
   segurança.
+• Página de Opções (em chrome://extensions, no ícone da extensão) — mostra
+  quantas leituras e linhas de histórico existem e desde quando, permite
+  exportar o mesmo Backup JSON do painel, importar um Backup JSON antigo
+  de volta (mesclando com o que já está guardado, sem duplicar linhas já
+  presentes) e apagar todo o histórico. Não depende da página do SIGC
+  estar aberta.
 
 O histórico é guardado como SCD tipo 2 no IndexedDB do navegador: uma
 linha por combinação de município/questionário/indicador, com as datas

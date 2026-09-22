@@ -92,25 +92,24 @@
   integração com serviços de terceiros.</p>
 
   <h2>5. Permissões do navegador</h2>
-  <p>A extensão solicita duas permissões, ambas usadas exclusivamente para
-  manter o histórico local e permitir exportá-lo:</p>
-  <ul>
-    <li><code>storage</code> — usada para guardar o histórico da situação
-    da coleta no IndexedDB do próprio navegador, na sua máquina. Este é o
-    armazenamento descrito nos itens 2 e 3 acima; nada além disso usa essa
-    permissão.</li>
-    <li><code>downloads</code> — usada apenas para que os botões
-    <strong>CSV-PRO</strong> e <strong>Backup JSON</strong> gravem os
-    arquivos exportados na sua pasta de Downloads, pelo mecanismo padrão
-    de download do Chrome. Os arquivos são montados inteiramente em
-    memória, a partir dos dados já guardados localmente, e nunca passam
-    pela rede.</li>
-  </ul>
-  <p>O manifesto declara apenas em quais páginas
+  <p><strong>A extensão não solicita nenhuma permissão.</strong> O
+  histórico é guardado no IndexedDB do próprio navegador e os arquivos
+  exportados são gravados por <code>Blob</code> + download comum do
+  navegador — ambas são APIs disponíveis a qualquer página sem permissão
+  declarada. O manifesto declara apenas em quais páginas
   (<code>portalweb.ibge.gov.br</code>, <code>portalweb2.ibge.gov.br</code> e
   <code>w3sigcmunic2026.ibge.gov.br</code>, os domínios do SIGC MUNIC 2026)
   seus scripts são executados. Isso pode ser verificado em
   <code>chrome://extensions</code> e no arquivo <code>manifest.json</code>.</p>
+  <p>A extensão também tem uma página de <strong>Opções</strong> (acessível
+  em <code>chrome://extensions</code>, no próprio ícone da extensão), que
+  abre em sua própria aba porque lê o mesmo IndexedDB do histórico
+  diretamente — sem depender da página do SIGC estar aberta. Nela é
+  possível ver quantas leituras e linhas de histórico existem, exportar o
+  mesmo Backup JSON do painel, importar um Backup JSON (mesclando com o
+  que já está guardado, sem duplicar) e apagar todo o histórico. Nenhuma
+  dessas ações envolve rede; tudo acontece no armazenamento local descrito
+  nos itens 2 e 3.</p>
 
   <h2>6. Código aberto e auditoria</h2>
   <p>Todo o código executável são os arquivos JavaScript publicados neste
