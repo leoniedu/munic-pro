@@ -881,3 +881,72 @@ describe('showPane across DataTables initialisation', () => {
     expect(t.style.display).toBe('');  // the table must not stay hidden
   });
 });
+
+describe('assistência column on the Município tab', () => {
+  const columns = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+  const line = {
+    key: 'k', municipio_codigo: '2900702', municipio_nome: 'Alagoinhas',
+    agencia_codigo: '290070200', agencia_nome: 'ALAGOINHAS',
+    questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
+  };
+
+  test('shows the assistência derived from the agência code', () => {
+    const el = R.renderMunicipioTab([line], columns);
+    const first = el.querySelector('tbody tr td');
+    // 290070200 maps to Alagoinhas in the vendored lookup.
+    expect(first.textContent).toBe('Alagoinhas');
+  });
+
+  test('assistência is the first column, as in the 2025 workbook', () => {
+    const el = R.renderMunicipioTab([line], columns);
+    const heads = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
+    expect(heads.slice(0, 5)).toEqual([
+      'Assistência', 'Agência', 'Município', 'Questionário', 'Indicador',
+    ]);
+  });
+
+  // An unknown código must not blank the cell: the lookup labels it
+  // visibly so a new agência is obvious rather than silently ungrouped.
+  test('an unknown agência code gets a visible label', () => {
+    const el = R.renderMunicipioTab(
+      [{ ...line, agencia_codigo: '999999999', agencia_nome: 'NOVA' }], columns);
+    expect(el.querySelector('tbody tr td').textContent).toContain('NOVA');
+  });
+
+  // The DataTables alert() trap: a header/body mismatch raises a modal
+  // that try/catch cannot contain.
+  test('header and body cell counts still agree', () => {
+    const el = R.renderMunicipioTab([line], columns);
+    const head = el.querySelectorAll('thead tr:first-child th').length;
+    const body = el.querySelectorAll('tbody tr:first-child td').length;
+    expect(body).toBe(head);
+  });
+});
+
+describe('zero-valued cells', () => {
+  // A críticas count of 0 rendered as an empty cell, which reads as "no
+  // data" rather than "no críticas". The 2025 workbook shows 0.
+  test('a críticas count of zero renders as 0, not blank', () => {
+    const line = {
+      key: 'k', municipio_codigo: '1', municipio_nome: 'M',
+      agencia_codigo: '290070200', agencia_nome: 'AG',
+      questionario: 'Básico', name: 'criticas_informativas', cells: [0],
+    };
+    const el = R.renderMunicipioTab(
+      [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+    const tds = [...el.querySelectorAll('tbody td')];
+    expect(tds[tds.length - 1].textContent).toBe('0');
+  });
+
+  test('a genuinely absent cell still renders the em-dash', () => {
+    const line = {
+      key: 'k', municipio_codigo: '1', municipio_nome: 'M',
+      agencia_codigo: '290070200', agencia_nome: 'AG',
+      questionario: 'Básico', name: 'criticas_informativas', cells: [null],
+    };
+    const el = R.renderMunicipioTab(
+      [line], [{ week: '2026-W38', run_ts: null }]);
+    const tds = [...el.querySelectorAll('tbody td')];
+    expect(tds[tds.length - 1].textContent).toBe('—');
+  });
+});

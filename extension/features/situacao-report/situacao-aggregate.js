@@ -145,6 +145,11 @@
           municipio_codigo: r.municipio_codigo,
           municipio_nome: r.municipio_nome,
           agencia_nome: r.agencia_nome,
+          // Carried so the renderer can derive assistência, which is not a
+          // stored field — it comes from the agência code via the vendored
+          // lookup. Without the code here the Município tab could only show
+          // the agência, which is what it did before.
+          agencia_codigo: r.agencia_codigo,
           questionario: r.questionario,
           name,
           cells: asOfCache.map((rows) => {

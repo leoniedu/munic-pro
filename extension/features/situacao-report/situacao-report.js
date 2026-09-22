@@ -122,7 +122,12 @@
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
       if (k === 'class') node.className = v;
-      else if (k === 'text') node.textContent = v;
+      // String(v), not v: assigning the NUMBER 0 to textContent yielded an
+      // empty cell, so a críticas count of zero read as "no data" instead
+      // of "no críticas" — the Excel shows 0. Coerced here, where it covers
+      // every caller, rather than at each call site.
+      else if (k === 'text') node.textContent = v === null || v === undefined
+        ? '' : String(v);
       else node.setAttribute(k, v);
     }
     for (const c of children || []) node.appendChild(c);
@@ -144,7 +149,10 @@
   // Colours only the situacao_rec row — críticas rows hold plain counts,
   // same as the Excel colour-codes only its situação row.
   function renderMunicipioTab(grid, columns) {
+    // Assistência first, matching the 2025 workbook's sheet 1 column order
+    // (assistencia_nome | agencia_nome | municipio_nome | name | dates…).
     const head = el('tr', {}, [
+      el('th', { text: 'Assistência' }),
       el('th', { text: 'Agência' }),
       el('th', { text: 'Município' }),
       el('th', { text: 'Questionário' }),
@@ -152,7 +160,14 @@
       ...columns.map((c) => el('th', { text: fmtColumnHeader(c) })),
     ]);
 
+    // Derived, not stored: the grid line carries agencia_codigo so this can
+    // resolve it. Guarded so the tab still renders if the lookup module is
+    // ever absent, rather than throwing and blanking the whole panel.
+    const assistenciaDe = (window.__municProAssistencias || {}).assistenciaDe
+      || ((cod, nome) => nome || '');
+
     const body = grid.map((line) => el('tr', {}, [
+      el('td', { text: assistenciaDe(line.agencia_codigo, line.agencia_nome) }),
       el('td', { text: line.agencia_nome }),
       el('td', { text: line.municipio_nome }),
       el('td', { text: line.questionario }),
