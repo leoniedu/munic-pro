@@ -1267,18 +1267,17 @@ describe('pane visibility survives DataTables initialisation', () => {
   });
 });
 
-describe('legacy rows written before id_uf existed', () => {
-  // Real failure on the live page: after the UF-in-the-key change shipped,
-  // the panel rendered partial data and the Assistência/Agência tabs
-  // collapsed to a single line. Cause: history written BEFORE the change
-  // has no id_uf, `undefined === 29` is false, and the UF filter silently
-  // discarded every legacy row.
-  const legacy = (mun, agn, sit) => ({
-    // no id_uf — this is the whole point
+describe('filtrarLinhasPorUf', () => {
+  // Strict match on id_uf: the earlier tolerance for rows with no id_uf
+  // (history predating multi-UF support) was a deliberate patch, since
+  // reverted — the decision is to clear that old data instead of keeping
+  // a special case for it alive in the filter.
+  const make = (mun, agn, sit, extra) => ({
     uf_sigla: 'BA', municipio_codigo: mun, municipio_nome: 'M' + mun,
     agencia_codigo: '290070200', agencia_nome: agn, questionario: 'Básico',
     situacao: sit, criticas_informativas: 0, criticas_comparativas: 0,
     from_ts: '2026-09-21T09:00:00', until_ts: null,
+    ...extra,
   });
 
   // The REAL function, not a copy: a reimplementation here would keep
@@ -1286,38 +1285,42 @@ describe('legacy rows written before id_uf existed', () => {
   // class this project keeps hitting.
   const filtrarPorUf = (rows, idUf) => R.filtrarLinhasPorUf(rows, idUf);
 
-  test('rows without id_uf survive the UF filter', () => {
-    const rows = [legacy('1', 'ALAGOINHAS', 'Não Iniciado'),
-      legacy('2', 'GUANAMBI', 'Concluído')];
-    expect(filtrarPorUf(rows, 29).length).toBe(2);
-  });
-
-  test('rows of another UF are still excluded', () => {
+  test('rows of another UF are excluded', () => {
     const rows = [
-      { ...legacy('1', 'ALAGOINHAS', 'Não Iniciado'), id_uf: 29 },
-      { ...legacy('2', 'ARACAJU', 'Concluído'), id_uf: 28 },
+      { ...make('1', 'ALAGOINHAS', 'Não Iniciado'), id_uf: 29 },
+      { ...make('2', 'ARACAJU', 'Concluído'), id_uf: 28 },
     ];
     const kept = filtrarPorUf(rows, 29);
     expect(kept.length).toBe(1);
     expect(kept[0].agencia_nome).toBe('ALAGOINHAS');
   });
 
-  test('a mix of legacy and stamped rows keeps both of this UF', () => {
+  test('rows with no id_uf are excluded, not tolerated', () => {
     const rows = [
-      legacy('1', 'ALAGOINHAS', 'Não Iniciado'),
-      { ...legacy('2', 'GUANAMBI', 'Concluído'), id_uf: 29 },
-      { ...legacy('3', 'ARACAJU', 'Concluído'), id_uf: 28 },
+      make('1', 'ALAGOINHAS', 'Não Iniciado'), // no id_uf
+      { ...make('2', 'GUANAMBI', 'Concluído'), id_uf: 29 },
     ];
-    expect(filtrarPorUf(rows, 29).length).toBe(2);
+    const kept = filtrarPorUf(rows, 29);
+    expect(kept.length).toBe(1);
+    expect(kept[0].agencia_nome).toBe('GUANAMBI');
   });
 
-  // The visible symptom: several agências must produce several group rows.
-  test('group tabs do not collapse to one line on legacy data', () => {
+  test('an unreadable UF selection (NaN) falls back to showing everything', () => {
     const rows = [
-      legacy('1', 'ALAGOINHAS', 'Não Iniciado'),
-      legacy('2', 'ALAGOINHAS', 'Concluído'),
-      { ...legacy('3', 'GUANAMBI', 'Não Iniciado'),
-        agencia_codigo: '290320100' },
+      { ...make('1', 'ALAGOINHAS', 'Não Iniciado'), id_uf: 29 },
+      make('2', 'GUANAMBI', 'Concluído'), // no id_uf
+    ];
+    expect(filtrarPorUf(rows, NaN).length).toBe(2);
+  });
+
+  // The visible symptom this filter must keep working: several agências of
+  // the SAME UF must still produce several group rows.
+  test('group tabs do not collapse to one line for matching rows', () => {
+    const rows = [
+      { ...make('1', 'ALAGOINHAS', 'Não Iniciado'), id_uf: 29 },
+      { ...make('2', 'ALAGOINHAS', 'Concluído'), id_uf: 29 },
+      { ...make('3', 'GUANAMBI', 'Não Iniciado'),
+        agencia_codigo: '290320100', id_uf: 29 },
     ];
     const cols = window.__municProSituacaoAggregate.runColumns(
       [{ run_ts: '2026-09-21T09:00:00', n_changed: 3 }]);
