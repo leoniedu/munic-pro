@@ -1962,7 +1962,9 @@ JSON snapshot (auto-downloaded every run) and the two CSV shapes.
 - Test: `tests/situacao-export.test.js`
 
 **Interfaces:**
-- Consumes: `window.__municPro.buildCsv`, `downloadFile`, `timestampSlug` (Task 1)
+- Consumes: `window.__municPro.buildCsv`, `downloadFile`, `timestampSlug` (Task 1);
+  `window.__municProSituacaoAggregate.situacaoAsOf` (Task 6) — the
+  denormalized CSV needs the state as of each run
 - Produces: `window.__municProSituacaoExport` with:
   - `snapshotJson(allRows, runs) -> string`
   - `denormalizedCsv(allRows, runs) -> string`
