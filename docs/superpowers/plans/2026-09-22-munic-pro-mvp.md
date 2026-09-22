@@ -47,6 +47,8 @@ Copied from sigc-pro, not imported — the two projects share no package.
   - `downloadFile(filename, text, mimeType, opts) -> void`
   - `timestampSlug() -> {data, hora}`
   - `isoWeek(date) -> string` (e.g. `"2026-W38"`)
+  - `mountWidget({id, anchor, insert, when, build}) -> void` — keeps a widget
+    present next to a page element across SIGC's re-renders
 
 - [ ] **Step 1: Write the failing test**
 
@@ -283,6 +285,50 @@ Create `extension/common/munic-common.js`:
     return `${year}-W${String(week).padStart(2, '0')}`;
   }
 
+  // Keeps a widget present next to a page element. SIGC re-renders its
+  // filter area, which silently removes a plainly-inserted button, so a
+  // one-shot insert at document_idle does not survive.
+  //
+  // insert:'after' puts the widget as the anchor's NEXT SIBLING — for
+  // anchoring beside a button such as Filtrar, where appending into the
+  // anchor's parent would land after unrelated trailing siblings.
+  // insert:'append' (default) puts it inside the anchor.
+  //
+  // Copied from sigc-pro's equivalent, minus its multi-feature context
+  // cache: MUNIC-PRO has one mount.
+  const mounts = [];
+  let mountObserver = null;
+
+  function tickMount(m) {
+    // try/catch per mount: a broken mount must never break the others.
+    try {
+      const existing = document.getElementById(m.id);
+      const anchorEl = m.anchor();
+      const ok = anchorEl && (!m.when || m.when());
+      if (ok && !existing) {
+        if (m.insert === 'after') anchorEl.insertAdjacentElement('afterend', m.build());
+        else anchorEl.appendChild(m.build());
+      } else if (!ok && existing) {
+        existing.remove();
+      }
+    } catch (err) {
+      console.error('[munic-pro] mount failed', err);
+    }
+  }
+
+  function tickAllMounts() {
+    for (const m of mounts) tickMount(m);
+  }
+
+  function mountWidget(spec) {
+    mounts.push(spec);
+    tickMount(spec);
+    if (!mountObserver) {
+      mountObserver = new MutationObserver(tickAllMounts);
+      mountObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
   window.__municPro = {
     normalizeLabel,
     f5Prefix,
@@ -292,6 +338,7 @@ Create `extension/common/munic-common.js`:
     downloadFile,
     timestampSlug,
     isoWeek,
+    mountWidget,
   };
 })();
 ```
@@ -2149,19 +2196,99 @@ git commit -m "feat: JSON snapshot and two CSV exports"
 
 Renders the three tabs and wires the buttons onto the SIGC page. Last task, because it consumes everything above.
 
+**Where the buttons go.**
+
+Page: `/Relatorio/RelSituacaoMunicipio`, titled **"Situação das Prefeituras,
+com Críticas da UF"**. On the gateway its URL carries the F5 prefix; on the
+intranet it does not. The manifest matches both origins.
+
+Its own buttons, confirmed from a live screenshot, are:
+
+```
+Atualizar críticas | Abrir | PDF | Excel
+```
+
+**There is no `#btnFiltrar` on this page.** sigc-pro anchors to that id
+(`ultimo-movimento-export.js:245`), and copying it here would find nothing
+and silently mount no buttons at all.
+
+The real markup, captured from the live page:
+
+```html
+<div class="col-12 text-sm-end">
+  <a href="javascript:…RelDados('/Relatorio/AtualizarCriticas')…"
+     id="btnAtualizarCriticas" class="btn btn-primary"
+     style="min-width: 85px; margin-right: 10px;">Atualizar críticas</a>
+  <a href="javascript:…RelDados('/Relatorio/RelSituacaoMunicipioDados')…"
+     id="btnAbrir" class="btn btn-primary"
+     style="min-width: 85px; margin-right: 10px;">Abrir</a>
+  <a href="javascript:…RelDownload(2)…" id="btnAbrirPdf" …>PDF</a>
+  <a href="javascript:…RelDownload(3)…" id="btnAbrirExcel"
+     class="btn btn-primary" style="min-width: 85px;">Excel</a>
+</div>
+```
+
+**Anchor: `insertAdjacentElement('afterend')` on `#btnAbrirExcel`**, the last
+button in the row — so ours appear after SIGC's own, in a row that already
+exists on page load.
+
+Three things this markup settles:
+
+1. **The endpoints are confirmed from the page's own code.** Stripped of the
+   F5 `javascript:` wrapper, `#btnAbrir` calls
+   `RelDados('/Relatorio/RelSituacaoMunicipioDados')` and
+   `#btnAtualizarCriticas` calls `RelDados('/Relatorio/AtualizarCriticas')` —
+   the two endpoints this plan uses, verbatim, and both through the *same*
+   `RelDados()` helper. Whatever `AtualizarCriticas` does, it is invoked
+   exactly like the data call, with the same `objJson` body.
+2. **They are `<a class="btn btn-primary">`, not `<button>`.** Ours must be
+   too, or they will look foreign in the row. `min-width: 85px` and
+   `margin-right: 10px` (on all but the last) are how the row spaces itself.
+3. **Our `<a>` elements must not carry an `href`.** SIGC's are `javascript:`
+   URLs rewritten by the F5 layer; adding one of our own risks the rewriter
+   touching it. A click handler alone is enough, with
+   `style="cursor: pointer"` to keep the pointer.
+
+Not `document.querySelector('h6')`: that takes the *first* h6 on the page,
+which is not necessarily the report header.
+
+**MUNIC-PRO does not require a prior Abrir.** The POST carries its own
+`objJson` and is self-contained, so the colleague can land on the page and
+click Atualizar immediately. This differs from the Último Movimento features,
+which parse the rendered results table and therefore need a Filtrar first.
+
+**The Agência dropdown is deliberately ignored.** The form offers one
+(a screenshot shows `SALVADOR 01` selected), but the captured POST sends
+`IdAgencia: 1` and comes back spanning several agências — matching the card's
+own title, "Críticas **da UF**". MUNIC-PRO always fetches the whole UF.
+
+This is not a simplification, it is a correctness requirement: the SCD diff
+closes every key absent from a fetch, so a snapshot narrowed to one agência
+would mark every município outside it as having vanished. Only `#IdUf` is
+read from the page.
+
+**A MutationObserver, not a poll.** SIGC re-renders its filter area, which
+removes a plainly-inserted button. `mountWidget` (Task 1) re-inserts it
+whenever that happens and removes it when the page no longer qualifies.
+
 **Files:**
 - Create: `extension/features/situacao-report/situacao-report.js`
 - Test: `tests/situacao-report.test.js`
 
 **Interfaces:**
 - Consumes: all previous modules
-- Produces: `window.__municProSituacaoReport` with `mount() -> void`, and
+- Produces: `window.__municProSituacaoReport` with `buildActions() -> HTMLElement`, and
   `window.__municProSituacaoReportInternals` with:
-  - `onSituacaoPage() -> boolean`
+  - `onSituacaoPage() -> boolean` — true when all four of SIGC's own
+    buttons are present
+  - `makeButton(text, onClick) -> HTMLAnchorElement`
   - `situacaoClass(situacao) -> string` (`''` for unknown values)
   - `renderMunicipioTab(grid, columns) -> HTMLElement`
   - `renderGroupTab(counts) -> HTMLElement`
   - `buildPanel(data) -> HTMLElement`
+  - `PAGE_BUTTON_IDS` (string array), `ANCHOR_ID` (string)
+
+The module self-mounts at load via `mountWidget`; nothing calls it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2179,31 +2306,60 @@ const R = window.__municProSituacaoReportInternals;
 describe('onSituacaoPage', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  test('true on the situação report page', () => {
-    document.body.innerHTML = '<h6>Relatório Situação Município</h6>';
+  // Detection is by the presence of THIS page's own buttons, not by its
+  // title. An earlier draft matched the text "situacao municipio" and
+  // would have returned false on the live page, whose card is titled
+  // "Situação das Prefeituras, com Críticas da UF" — the same class of
+  // silent miss sigc-pro documents in ultimo-movimento-export.js:26-33.
+  // The ids come from the page's own markup and are what we anchor to
+  // anyway, so detection and anchoring cannot drift apart.
+  test('true when the page action buttons are present', () => {
+    document.body.innerHTML =
+      '<a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
+      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a>';
     expect(R.onSituacaoPage()).toBe(true);
   });
 
-  // The live PNS header reads "Relatório Último Movimento", not the bare
-  // title — sigc-pro was bitten by an equality check here, so this
-  // matches a substring.
-  test('tolerates extra words in the header', () => {
-    document.body.innerHTML = '<h6>SIGC — Relatório Situação Município 2026</h6>';
-    expect(R.onSituacaoPage()).toBe(true);
-  });
-
-  test('ignores accents and case', () => {
-    document.body.innerHTML = '<h6>RELATORIO SITUACAO MUNICIPIO</h6>';
-    expect(R.onSituacaoPage()).toBe(true);
-  });
-
-  test('false on another report', () => {
-    document.body.innerHTML = '<h6>Relatório Último Movimento</h6>';
+  test('false when the anchor button is absent', () => {
+    document.body.innerHTML = '<a id="btnAtualizarCriticas"></a>';
     expect(R.onSituacaoPage()).toBe(false);
   });
 
-  test('false on a page with no header', () => {
+  test('false on an unrelated report page', () => {
+    document.body.innerHTML = '<a id="btnFiltrar"></a><h6>Relatório Último Movimento</h6>';
     expect(R.onSituacaoPage()).toBe(false);
+  });
+
+  test('false on an empty page', () => {
+    expect(R.onSituacaoPage()).toBe(false);
+  });
+});
+
+describe('makeButton', () => {
+  // SIGC's own buttons are <a class="btn btn-primary">, not <button>.
+  // Matching that is what makes ours look native in the row.
+  test('builds an anchor with SIGC button classes', () => {
+    const b = R.makeButton('Atualizar', () => {});
+    expect(b.tagName).toBe('A');
+    expect(b.className).toContain('btn');
+    expect(b.className).toContain('btn-primary');
+  });
+
+  // SIGC's hrefs are javascript: URLs rewritten by the F5 layer. Ours
+  // carries none, so the rewriter has nothing of ours to touch.
+  test('carries no href', () => {
+    expect(R.makeButton('X', () => {}).hasAttribute('href')).toBe(false);
+  });
+
+  test('keeps the pointer cursor without an href', () => {
+    expect(R.makeButton('X', () => {}).style.cursor).toBe('pointer');
+  });
+
+  test('calls its handler on click', () => {
+    let called = false;
+    const b = R.makeButton('X', () => { called = true; });
+    b.click();
+    expect(called).toBe(true);
   });
 });
 
@@ -2285,6 +2441,22 @@ describe('renderGroupTab', () => {
     const text = el.textContent;
     expect(text).toContain('2');
     expect(text).toMatch(/66[.,]7\s*%/);
+  });
+});
+
+describe('page anchor', () => {
+  // Pinned to the ids captured from the live page. If SIGC renames a
+  // button, this fails loudly here instead of the extension quietly
+  // mounting nothing and the colleague reporting "the buttons are gone".
+  test('anchors to the last of SIGC own buttons', () => {
+    expect(R.PAGE_BUTTON_IDS).toEqual([
+      'btnAtualizarCriticas', 'btnAbrir', 'btnAbrirPdf', 'btnAbrirExcel',
+    ]);
+    expect(R.ANCHOR_ID).toBe('btnAbrirExcel');
+  });
+
+  test('the anchor is one of the detected buttons', () => {
+    expect(R.PAGE_BUTTON_IDS).toContain(R.ANCHOR_ID);
   });
 });
 
@@ -2371,15 +2543,36 @@ Create `extension/features/situacao-report/situacao-report.js`:
     .munic-pro-vazio { color: #999; }
   `;
 
-  // Substring match on the page header, deaccented — an equality check
-  // against the live title silently never fires when SIGC renders extra
-  // words, which is how the equivalent sigc-pro feature broke once.
+  // This page's own action buttons, from its live markup. ANCHOR_ID is
+  // the last of them, so ours land after SIGC's.
+  const PAGE_BUTTON_IDS = [
+    'btnAtualizarCriticas', 'btnAbrir', 'btnAbrirPdf', 'btnAbrirExcel',
+  ];
+  const ANCHOR_ID = 'btnAbrirExcel';
+
+  // Detected by the page's own buttons rather than by its title.
+  //
+  // An earlier draft matched the header text "situacao municipio" and
+  // would have been false on the live page, which is titled "Situação
+  // das Prefeituras, com Críticas da UF". Anchoring to the same ids we
+  // detect on means detection and anchoring cannot drift apart: if the
+  // ids change, we mount nothing rather than mounting somewhere wrong.
   function onSituacaoPage() {
-    return [...document.querySelectorAll('h6')].some((h) => {
-      const t = normalizeLabel(h.textContent)
-        .normalize('NFD').replace(/[̀-ͯ]/g, '');
-      return t.includes('situacao municipio');
-    });
+    return PAGE_BUTTON_IDS.every((id) => document.getElementById(id));
+  }
+
+  // Mirrors SIGC's own buttons: <a class="btn btn-primary"> with the same
+  // inline metrics. No href — SIGC's are javascript: URLs rewritten by
+  // the F5 layer, and ours has nothing for it to rewrite.
+  function makeButton(text, onClick) {
+    const a = document.createElement('a');
+    a.className = 'btn btn-primary';
+    a.textContent = text;
+    a.style.minWidth = '85px';
+    a.style.marginLeft = '10px';
+    a.style.cursor = 'pointer';
+    a.addEventListener('click', onClick);
+    return a;
   }
 
   // '' for anything unrecognised: an unknown situação renders uncoloured
@@ -2495,29 +2688,26 @@ Create `extension/features/situacao-report/situacao-report.js`:
     return panel;
   }
 
-  // Wires the buttons onto the page. Kept thin: every piece of logic it
-  // calls is tested on its own.
-  function mount() {
-    if (!onSituacaoPage()) return;
-    if (document.getElementById('munic-pro-actions')) return;
-
-    const host = document.querySelector('h6');
-    if (!host || !host.parentElement) return;
-
+  // Builds the button row. Kept thin: every piece of logic it calls is
+  // tested on its own.
+  function buildActions() {
     const status = el('span', { id: 'munic-pro-status' });
-    const bar = el('div', { id: 'munic-pro-actions' });
+    status.style.marginLeft = '10px';
+    const bar = el('span', { id: 'munic-pro-actions' });
 
-    const say = (msg) => { status.textContent = ` ${msg}`; };
+    const say = (msg) => { status.textContent = msg; };
 
-    const atualizar = el('button', { type: 'button', text: 'Atualizar' });
-    atualizar.addEventListener('click', async () => {
+    const atualizar = makeButton('Atualizar', async () => {
       const FETCH = window.__municProSituacaoFetch;
       const STORE = window.__municProSituacaoStore;
       const EXPORT = window.__municProSituacaoExport;
+      // Only the UF is read from the page. The Agência dropdown is
+      // ignored on purpose: this report is UF-wide ("Críticas da UF"),
+      // and a snapshot narrowed to one agência would make the SCD diff
+      // close every município outside it.
       const uf = window.__municProSituacaoFetchInternals.readUf();
-      if (!uf) { say('Selecione uma UF e clique em Filtrar primeiro.'); return; }
+      if (!uf) { say('Selecione a Unidade Estadual.'); return; }
 
-      atualizar.disabled = true;
       say('buscando…');
       try {
         const { rows, warnings } = await FETCH.fetchSituacao(uf);
@@ -2531,13 +2721,10 @@ Create `extension/features/situacao-report/situacao-report.js`:
       } catch (err) {
         console.error(TAG, err);
         say(`erro: ${err.message}`);
-      } finally {
-        atualizar.disabled = false;
       }
     });
 
-    const relatorio = el('button', { type: 'button', text: 'Relatório' });
-    relatorio.addEventListener('click', async () => {
+    const relatorio = makeButton('Relatório', async () => {
       const STORE = window.__municProSituacaoStore;
       const existing = document.querySelector('.munic-pro-panel');
       if (existing) existing.remove();
@@ -2556,48 +2743,52 @@ Create `extension/features/situacao-report/situacao-report.js`:
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
       });
-      bar.parentElement.insertBefore(panel, bar.nextSibling);
+      // The button row sits in a right-aligned div; the panel belongs
+      // below the whole card, full width.
+      const card = bar.closest('.card') || bar.parentElement.parentElement;
+      card.parentElement.insertBefore(panel, card.nextSibling);
       say('');
     });
 
-    const csvObs = el('button', { type: 'button', text: 'CSV observações' });
-    csvObs.addEventListener('click', async () => {
+    const csvObs = makeButton('CSV observações', async () => {
       const STORE = window.__municProSituacaoStore;
       window.__municProSituacaoExport.downloadDenormalizedCsv(
         await STORE.getAll(), await STORE.getRuns());
     });
 
-    const csvMud = el('button', { type: 'button', text: 'CSV mudanças' });
-    csvMud.addEventListener('click', async () => {
+    const csvMud = makeButton('CSV mudanças', async () => {
       const STORE = window.__municProSituacaoStore;
       window.__municProSituacaoExport.downloadStateChangeCsv(await STORE.getAll());
     });
 
     for (const b of [atualizar, relatorio, csvObs, csvMud]) bar.appendChild(b);
     bar.appendChild(status);
-    host.parentElement.insertBefore(bar, host.nextSibling);
+    return bar;
   }
 
-  window.__municProSituacaoReport = { mount };
+  window.__municProSituacaoReport = { buildActions };
   window.__municProSituacaoReportInternals = {
     onSituacaoPage,
+    makeButton,
     situacaoClass,
     renderMunicipioTab,
     renderGroupTab,
     buildPanel,
+    PAGE_BUTTON_IDS,
+    ANCHOR_ID,
   };
 
-  // SIGC renders its reports after the initial load, so poll briefly
-  // rather than mounting once at document_idle and missing the header.
-  if (typeof document !== 'undefined' && document.readyState !== 'loading') {
-    let tries = 0;
-    const timer = setInterval(() => {
-      tries += 1;
-      mount();
-      if (tries > 40 || document.getElementById('munic-pro-actions')) {
-        clearInterval(timer);
-      }
-    }, 500);
+  // Inserted after SIGC's last button, and re-inserted whenever the page
+  // re-renders and drops it. mountWidget also removes it if the page
+  // stops qualifying, so a SPA navigation leaves nothing orphaned.
+  if (typeof document !== 'undefined' && document.body) {
+    window.__municPro.mountWidget({
+      id: 'munic-pro-actions',
+      anchor: () => document.getElementById(ANCHOR_ID),
+      insert: 'after',
+      when: () => onSituacaoPage(),
+      build: buildActions,
+    });
   }
 })();
 ```
@@ -2605,7 +2796,7 @@ Create `extension/features/situacao-report/situacao-report.js`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-report.test.js`
-Expected: PASS, 16 tests
+Expected: PASS, 22 tests
 
 - [ ] **Step 5: Run the full suite and the gate**
 
@@ -2675,8 +2866,13 @@ Automated tests cover parsing, diffing, storage, aggregation and export
 against fixtures. What they cannot cover is the live portal. After Task 8,
 load the extension unpacked and check:
 
-- [ ] On the MUNIC 2026 **Relatório Situação Município** page, the four
-      buttons appear next to the page header.
+- [ ] On the **Situação das Prefeituras, com Críticas da UF** page, our four
+      buttons appear **after SIGC's Excel button**, in the same row, styled
+      like the native ones.
+- [ ] They appear **without clicking Abrir first** — the POST is
+      self-contained.
+- [ ] Changing the Agência dropdown does **not** change what gets stored:
+      the report stays UF-wide.
 - [ ] **Atualizar** reports a row count and a change count, and a
       `munic2026_YYYY-MM-DD.json` lands in Downloads.
 - [ ] A second **Atualizar** minutes later reports **0 mudanças** — the
