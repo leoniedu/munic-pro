@@ -94,6 +94,26 @@ fixture extension/features/situacao-report/zz-gate-main-regression-test.js \
   "async function bad() { return indexedDB.open('munic-pro', 1); }"
 expect_fail "indexedDB called from a MAIN-world (non-storage) directory"
 
+# The options page (extension/options/) renders the Status/Backup/Import/
+# Clear UI but must never open the browser's structured-storage database
+# itself -- that stays confined to situacao-store/, same as MAIN-world
+# content-script code. This is the same "storage API outside a
+# storage-sanctioned directory" rule, exercised against the new directory
+# specifically, so a future change to STORAGE_DIRS that dropped it is
+# caught here rather than only in code review.
+fixture extension/options/zz-gate-test.js \
+  "indexedDB.open('munic-pro', 1);"
+expect_fail "storage API used directly from the options page's own directory"
+
+# The options page's storage logic instead lives inside the already
+# storage-sanctioned situacao-store/ directory (situacao-options-store.js),
+# alongside the ISOLATED-world bridge. A new file dropped there must still
+# be allowed to open the database, regardless of which of the two doors
+# (content-script bridge or options page) it serves.
+fixture extension/features/situacao-store/zz-gate-options-test.js \
+  "indexedDB.open('munic-pro', 1);"
+expect_pass "indexedDB in a new file inside the storage-sanctioned directory (options-page store)"
+
 fixture extension/common/zz-gate-test.js \
   "navigator.sendBeacon('/x');"
 expect_fail "sendBeacon anywhere in extension/"

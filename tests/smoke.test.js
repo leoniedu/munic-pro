@@ -84,15 +84,45 @@ test('the ISOLATED-world content script runs at document_start', () => {
 // sends you looking in the wrong place. The scaffold created icons/ but no
 // icons, so the first real load attempt failed. Pinned here so the next
 // missing asset fails a test instead.
+//
+// Includes options_ui.page: the same silent-404 failure mode applies to
+// the options page as to a missing icon or content script.
 test('every file the manifest references exists on disk', () => {
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
   const referenced = [
     ...Object.values(manifest.icons || {}),
     ...manifest.content_scripts.flatMap((cs) => cs.js || []),
+    ...(manifest.options_ui ? [manifest.options_ui.page] : []),
   ];
   for (const rel of referenced) {
     expect(existsSync(`extension/${rel}`)).toBe(true);
   }
+});
+
+// The options page is its own tiny manifest of files (declared via
+// <script> tags rather than the top-level manifest.json), so it needs its
+// own existence check — the top-level check above only follows
+// options_ui.page itself, not what that HTML file pulls in.
+test('every script the options page references exists on disk', () => {
+  const html = readFileSync('extension/options/options.html', 'utf8');
+  const srcs = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
+  expect(srcs.length).toBeGreaterThan(0);
+  for (const src of srcs) {
+    const path = new URL(src, 'file:///extension/options/').pathname.replace(/^\//, '');
+    expect(existsSync(path)).toBe(true);
+  }
+});
+
+// options_ui with open_in_tab is the constraint the task itself sets: no
+// chrome_url_overrides, and the page must open as its own tab rather than
+// as an embedded iframe inside chrome://extensions.
+test('options page is declared via options_ui with open_in_tab, not chrome_url_overrides', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  expect(manifest.options_ui).toEqual({
+    page: 'options/options.html',
+    open_in_tab: true,
+  });
+  expect(manifest.chrome_url_overrides).toBeUndefined();
 });
 
 // The SIGC report opens through the F5 webtop, which puts it in a frame.

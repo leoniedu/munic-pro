@@ -56,7 +56,11 @@
   // well before this MAIN-world script's document_idle features can call
   // it — this guards against that assumption being wrong, rather than
   // hanging a button click forever.
-  const CALL_TIMEOUT_MS = 10000;
+  // Overridable so the test that proves an unreachable bridge REJECTS does
+  // not have to sit through the real ceiling. That single test was 98% of
+  // the whole suite's runtime — 10s of a 10.2s run — which is the kind of
+  // friction that stops people running tests at all.
+  let callTimeoutMs = 10000;
 
   // Distinguishes "the bridge script never even loaded" (documentElement
   // has neither of its attributes touched, ever) from "it loaded but this
@@ -106,7 +110,7 @@
         'extensão em chrome://extensions.',
       ));
       pump();
-    }, CALL_TIMEOUT_MS);
+    }, callTimeoutMs);
     next.clearTimer = () => clearTimeout(timer);
     document.documentElement.setAttribute(
       ATTR_REQ,
@@ -149,6 +153,10 @@
   function clearAll() {
     return call('clearAll');
   }
+
+  window.__municProSituacaoStoreInternals = {
+    setCallTimeoutMs: (ms) => { callTimeoutMs = ms; },
+  };
 
   window.__municProSituacaoStore = {
     saveSnapshot,

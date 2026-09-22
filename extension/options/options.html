@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>MUNIC-PRO — Opções</title>
+<style>
+  /* Loosely follows the panel's own STYLE (situacao-report.js) — same
+     blue, same situação colours, same plain-table look — without
+     reproducing it wholesale: this page has no report tabs, just a
+     status block and three actions. */
+  :root { color-scheme: light; }
+  body {
+    font: 13px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1a1a1a;
+    background: #fff;
+    margin: 0;
+    padding: 24px;
+    max-width: 640px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 4px;
+    color: #00437a;
+  }
+  .munic-pro-options-subtitulo {
+    color: #666;
+    margin: 0 0 20px;
+  }
+  section {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  section h2 {
+    font-size: 14px;
+    margin: 0 0 10px;
+    color: #00437a;
+  }
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  th, td {
+    border: 1px solid #ccc; padding: 3px 8px; text-align: left;
+  }
+  thead th { background: #f5f5f5; }
+  .munic-pro-vazio { color: #999; font-style: italic; }
+  .munic-pro-options-botoes { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: #00437a;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 7px 14px;
+    cursor: pointer;
+    font: inherit;
+  }
+  button:hover { background: #00305a; }
+  button.munic-pro-perigo { background: #9C0006; }
+  button.munic-pro-perigo:hover { background: #7a0005; }
+  input[type="file"] { font: inherit; }
+  .munic-pro-options-msg {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 3px;
+    white-space: pre-line;
+  }
+  .munic-pro-options-msg.ok { background: #C6EFCE; color: #006100; }
+  .munic-pro-options-msg.erro { background: #FFC7CE; color: #9C0006; }
+  .munic-pro-options-msg.aviso { background: #FFEB9C; color: #9C5700; }
+</style>
+</head>
+<body>
+  <h1>MUNIC-PRO — Opções</h1>
+  <p class="munic-pro-options-subtitulo">
+    Gerencia o histórico guardado nesta instalação da extensão.
+  </p>
+
+  <section id="munic-pro-status">
+    <h2>Status</h2>
+    <div id="munic-pro-status-corpo">Carregando…</div>
+  </section>
+
+  <section id="munic-pro-backup">
+    <h2>Backup JSON</h2>
+    <p>Exporta o histórico inteiro guardado nesta instalação, no mesmo
+      formato do botão "Backup JSON" do painel — um arquivo de qualquer um
+      dos dois pode ser importado pelo outro.</p>
+    <div class="munic-pro-options-botoes">
+      <button id="munic-pro-btn-exportar">Exportar backup</button>
+    </div>
+  </section>
+
+  <section id="munic-pro-import">
+    <h2>Importar backup</h2>
+    <p>Lê um arquivo de Backup JSON e mescla o conteúdo com o histórico já
+      guardado. Linhas e leituras já presentes são identificadas e
+      ignoradas — importar o mesmo arquivo mais de uma vez não duplica o
+      histórico. Um arquivo que não seja reconhecido como backup não altera
+      nada.</p>
+    <div class="munic-pro-options-botoes">
+      <input type="file" id="munic-pro-arquivo-import" accept="application/json,.json">
+      <button id="munic-pro-btn-importar">Importar</button>
+    </div>
+    <div id="munic-pro-import-msg"></div>
+  </section>
+
+  <section id="munic-pro-limpar">
+    <h2>Limpar histórico</h2>
+    <p>Apaga todo o histórico guardado nesta instalação. Não pode ser
+      desfeito — faça um Backup JSON antes, se quiser guardar os dados.</p>
+    <div class="munic-pro-options-botoes">
+      <button id="munic-pro-btn-limpar" class="munic-pro-perigo">Limpar tudo</button>
+    </div>
+    <div id="munic-pro-limpar-msg"></div>
+  </section>
+
+  <script src="../features/situacao-store/situacao-options-store.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

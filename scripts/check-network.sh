@@ -17,17 +17,24 @@
 #   - extension/features/situacao-store/  : indexedDB only, no network at all
 #   - extension/features/situacao-export/ : Blob/download only, no network
 #
-# situacao-store/ holds BOTH worlds' code: situacao-bridge.js (ISOLATED
-# world, the extension's own origin) is the only file that actually opens
-# indexedDB; situacao-store.js (MAIN world, the page's origin) is a thin
-# window.postMessage client with no storage API of its own, and
-# situacao-diff.js (pure, no I/O) is shared by both. The gate sanctions the
-# whole directory rather than telling the two worlds apart file-by-file —
-# same tripwire as before, just now also covering the ISOLATED file. What
-# actually keeps MAIN-world code out of indexedDB is that it has no
-# window.__municPro*Bridge global and no reason to call indexedDB.open()
-# — checked by a source-shape test in tests/situacao-store.test.js, not by
-# this script.
+# situacao-store/ holds THREE callers' code, none of them the network:
+# situacao-bridge.js (ISOLATED-world content script, the extension's own
+# origin) and situacao-options-store.js (the options page, also the
+# extension's own origin) each open indexedDB directly, being two
+# different doors onto the SAME database; situacao-store.js (MAIN world,
+# the SIGC page's origin) is a thin request/reply client with no storage
+# API of its own, carried on a DOM attribute rather than postMessage; and
+# situacao-diff.js (pure, no I/O) is shared by the storage-owning pair.
+# The gate sanctions the whole directory rather than telling the callers
+# apart file-by-file — same tripwire as before, just now covering a third
+# file too. The options page's OWN directory (extension/options/) is
+# deliberately NOT sanctioned: its options.js must call into
+# situacao-options-store.js rather than open the database itself, the
+# same separation the content-script split already keeps between "owns
+# the database" and "renders UI". What actually keeps MAIN-world content-
+# script code and the options page's own UI code out of indexedDB is that
+# neither has a reason to call indexedDB.open() directly — checked by
+# source-shape tests in tests/situacao-store.test.js, not by this script.
 #
 # Also runs a repo-wide (not just extension/) check that no unlisted Chrome
 # Web Store URL is ever committed — see the bottom of this script.

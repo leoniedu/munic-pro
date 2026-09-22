@@ -309,6 +309,12 @@ describe('cross-origin storage: MAIN never touches indexedDB directly', () => {
     // documentElement.setAttribute and swallowing S's own request writes
     // before the observer ever sees them — the same observable failure
     // as the bridge never having loaded.
+    // Shorten the ceiling rather than waiting it out: this one test was
+    // 10s of a 10.2s suite. The behaviour under test is that an
+    // unanswered call REJECTS — the exact duration is not the point.
+    const INT = window.__municProSituacaoStoreInternals;
+    INT.setCallTimeoutMs(50);
+
     const el = document.documentElement;
     const originalSetAttribute = el.setAttribute.bind(el);
     el.setAttribute = (name, value) => {
@@ -318,6 +324,7 @@ describe('cross-origin storage: MAIN never touches indexedDB directly', () => {
     try {
       await expect(S.getAll()).rejects.toThrow();
     } finally {
+      INT.setCallTimeoutMs(10000);
       el.setAttribute = originalSetAttribute;
     }
   }, 15000);
