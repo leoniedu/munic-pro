@@ -18,3 +18,20 @@ test('manifest targets the MUNIC 2026 hosts', () => {
   expect(matches).toContain('https://w3sigcmunic2026.ibge.gov.br/*');
   expect(matches).toContain('https://portalweb.ibge.gov.br/*');
 });
+
+// Each file reads its dependencies off window at load time, so a wrong
+// order is a TypeError at page load — in the browser, where nobody is
+// watching. Pinned here instead.
+test('manifest loads scripts in dependency order', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  expect(manifest.content_scripts[0].js).toEqual([
+    'common/munic-common.js',
+    'features/situacao-store/situacao-diff.js',
+    'features/situacao-store/situacao-store.js',
+    'features/situacao-fetch/situacao-parse.js',
+    'features/situacao-fetch/situacao-fetch.js',
+    'features/situacao-report/situacao-aggregate.js',
+    'features/situacao-report/situacao-report.js',
+    'features/situacao-export/situacao-export.js',
+  ]);
+});
