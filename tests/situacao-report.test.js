@@ -429,8 +429,37 @@ describe('button styling and placement', () => {
     expect(b.style.background).not.toBe('');
   });
 
-  test('buttons space with margin-right, matching SIGC own row', () => {
-    expect(R.makeButton('X', () => {}).style.marginRight).toBe('10px');
+  // Spacing moved from per-button margins to the row's flex `gap` when the
+  // buttons were found rendering off-screen on the live page: the row
+  // carried Bootstrap's `col-12`, which only behaves inside a `.row`, and
+  // outside one its width rules pushed the last buttons past the container
+  // edge — they only became visible if you zoomed out.
+  test('the button row is flex, so it wraps instead of overflowing', () => {
+    const bar = R.buildActions();
+    expect(bar.style.display).toBe('flex');
+    expect(bar.style.flexWrap).toBe('wrap');
+    expect(bar.style.gap).toBe('10px');
+  });
+
+  test('the button row carries no Bootstrap grid class', () => {
+    // `col-12` outside a `.row` is what put the buttons off-screen.
+    expect(R.buildActions().className).not.toContain('col-');
+  });
+
+  test('the button row cannot exceed its container width', () => {
+    const bar = R.buildActions();
+    expect(bar.style.width).toBe('100%');
+    expect(bar.style.boxSizing).toBe('border-box');
+  });
+
+  test('all four buttons are present in the row', () => {
+    // Two of the four were reported missing on the live page; they were
+    // off-screen rather than absent, but the count is worth pinning.
+    const labels = [...R.buildActions().querySelectorAll('a')]
+      .map((a) => a.textContent);
+    expect(labels).toEqual([
+      'Atualizar', 'Relatório', 'CSV observações', 'CSV mudanças',
+    ]);
   });
 });
 

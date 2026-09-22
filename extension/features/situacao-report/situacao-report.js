@@ -98,7 +98,8 @@
     a.className = 'btn btn-primary';
     a.textContent = text;
     a.style.minWidth = '85px';
-    a.style.marginRight = '10px';
+    // Spacing comes from the row's flex `gap`, not per-button margins —
+    // one rule instead of one-per-button plus a special case for the last.
     a.style.cursor = 'pointer';
     a.style.background = PRO_BLUE;
     a.style.borderColor = PRO_BLUE;
@@ -409,8 +410,23 @@
     // A block-level row, right-aligned to line up with SIGC's own button
     // row above it. `text-sm-end` is the portal's own alignment class, so
     // ours tracks theirs if the page's breakpoint behaviour changes.
-    const bar = el('div', { id: 'munic-pro-actions', class: 'col-12 text-sm-end' });
+    // No Bootstrap grid classes. `col-12` only behaves inside a `.row`,
+    // and when this lands anywhere else it applies grid padding and width
+    // rules with nothing to constrain them — the row then runs past the
+    // container's right edge and the last buttons sit off-screen until you
+    // zoom out. Observed on the live page.
+    //
+    // Plain flex instead, so the row is correct wherever it is mounted:
+    // wraps rather than overflowing, and stays inside its parent's width.
+    const bar = el('div', { id: 'munic-pro-actions' });
+    bar.style.display = 'flex';
+    bar.style.flexWrap = 'wrap';
+    bar.style.justifyContent = 'flex-end';
+    bar.style.alignItems = 'center';
+    bar.style.gap = '10px';
     bar.style.marginTop = '10px';
+    bar.style.width = '100%';
+    bar.style.boxSizing = 'border-box';
 
     const say = (msg) => { status.textContent = msg; };
 
@@ -498,9 +514,6 @@
 
     const actions = [atualizar, relatorio, csvObs, csvMud];
     for (const b of actions) bar.appendChild(b);
-    // No trailing margin on the last button: the row is right-aligned, so a
-    // trailing 10px would push the group off the edge SIGC's row sits on.
-    actions[actions.length - 1].style.marginRight = '0';
     bar.appendChild(status);
     return bar;
   }
@@ -508,6 +521,7 @@
   window.__municProSituacaoReport = { buildActions };
   window.__municProSituacaoReportInternals = {
     onSituacaoPage,
+    buildActions,
     makeButton,
     situacaoClass,
     renderMunicipioTab,
