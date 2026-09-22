@@ -13,12 +13,16 @@
   const TAG = '[munic-pro]';
 
   // Colours ported verbatim from the 2025 workbook (R/report.R:320-336),
-  // so the report reads the same to anyone used to the spreadsheet.
+  // keyed on the four Excel buckets — not the raw digitação variants,
+  // which situacaoRec() (situacao-aggregate.js) folds into
+  // 'Digitação/Validação' before this table is ever consulted.
+  // 'Supervisão/Análise' is kept here even though nothing currently
+  // produces it: it was a real bucket in the 2025 vocabulary, just one
+  // no observed raw situação mapped to.
   const SITUACAO_CLASS = {
     'Não Iniciado': 'munic-pro-nao-iniciado',
-    'Dig. Informante': 'munic-pro-digitacao',
-    'Dig. Ibge': 'munic-pro-digitacao',
-    'Em Validação': 'munic-pro-digitacao',
+    'Digitação/Validação': 'munic-pro-digitacao',
+    'Supervisão/Análise': 'munic-pro-supervisao',
     'Concluído': 'munic-pro-concluido',
   };
 
@@ -118,11 +122,14 @@
     return `${col.week}\n(${dd}/${mm})`;
   }
 
+  // Colours only the situacao_rec row — críticas rows hold plain counts,
+  // same as the Excel colour-codes only its situação row.
   function renderMunicipioTab(grid, columns) {
     const head = el('tr', {}, [
       el('th', { text: 'Agência' }),
       el('th', { text: 'Município' }),
       el('th', { text: 'Questionário' }),
+      el('th', { text: 'Indicador' }),
       ...columns.map((c) => el('th', { text: fmtColumnHeader(c) })),
     ]);
 
@@ -130,9 +137,12 @@
       el('td', { text: line.agencia_nome }),
       el('td', { text: line.municipio_nome }),
       el('td', { text: line.questionario }),
+      el('td', { text: line.name }),
       ...line.cells.map((cell) => el('td', {
         text: cell === null ? '—' : cell,
-        class: cell === null ? 'munic-pro-vazio' : situacaoClass(cell),
+        class: cell === null
+          ? 'munic-pro-vazio'
+          : (line.name === 'situacao_rec' ? situacaoClass(cell) : ''),
       })),
     ]));
 
@@ -142,19 +152,31 @@
     ]);
   }
 
-  function renderGroupTab(counts) {
+  function fmtCount(n) {
+    return String(n);
+  }
+
+  // One column per date (change #3), matching the Excel's
+  // situacao_assistencia / _pct sheets. `fmt` picks the cell format —
+  // fmtCount for the counts tab, fmtPct for the percentage tab — and
+  // counts is the groupCountsByColumn() shape ({group, situacao, cells}
+  // with `cells` renamed to whichever field `fmt` is meant to read; both
+  // tabs pass their own `cells`/`pctCells` array in as `cells` so this
+  // stays a single renderer).
+  function renderGroupTab(counts, columns, fmt) {
     const head = el('tr', {}, [
       el('th', { text: 'Grupo' }),
       el('th', { text: 'Situação' }),
-      el('th', { text: 'Municípios' }),
-      el('th', { text: '%' }),
+      ...columns.map((c) => el('th', { text: fmtColumnHeader(c) })),
     ]);
 
     const body = counts.map((c) => el('tr', {}, [
       el('td', { text: c.group }),
       el('td', { text: c.situacao, class: situacaoClass(c.situacao) }),
-      el('td', { text: String(c.n) }),
-      el('td', { text: fmtPct(c.pct) }),
+      ...c.cells.map((cell) => el('td', {
+        text: cell === null ? '—' : fmt(cell),
+        class: cell === null ? 'munic-pro-vazio' : '',
+      })),
     ]));
 
     return el('table', {}, [
@@ -174,11 +196,13 @@
       }));
     }
 
-    const tabNames = ['Município', 'Agência', 'Agência × Município'];
+    // "Agência × Município" is dropped (change #3): with roughly one
+    // município per group, every row there read 100%, which is noise.
+    const tabNames = ['Município', 'Assistência', 'Assistência %'];
     const panes = [
       renderMunicipioTab(data.grid, data.columns),
-      renderGroupTab(data.porAssistencia),
-      renderGroupTab(data.porAgencia),
+      renderGroupTab(data.porAssistencia, data.columns, fmtCount),
+      renderGroupTab(data.porAssistenciaPct, data.columns, fmtPct),
     ];
 
     const buttons = tabNames.map((name, i) => {
@@ -256,12 +280,21 @@
       if (!runs.length) { say('Sem histórico ainda — clique em Atualizar.'); return; }
 
       const columns = AGG.weekColumns(runs);
-      const current = AGG.situacaoAsOf(allRows, runs[runs.length - 1].run_ts);
+      // assistencia_nome is not a stored field — it is derived from
+      // agencia_codigo via the vendored Bahia mapping (change #4), so
+      // groupCountsByColumn() can group by it like any other field.
+      const { assistenciaDe } = window.__municProAssistencias;
+      const withAssistencia = allRows.map((r) => ({
+        ...r,
+        assistencia_nome: assistenciaDe(r.agencia_codigo, r.agencia_nome),
+      }));
+      const porAssistencia = AGG.groupCountsByColumn(
+        withAssistencia, ['assistencia_nome'], columns);
       const panel = buildPanel({
         grid: AGG.municipioGrid(allRows, columns),
         columns,
-        porAssistencia: AGG.groupCounts(current, ['agencia_nome']),
-        porAgencia: AGG.groupCounts(current, ['agencia_nome', 'municipio_nome']),
+        porAssistencia,
+        porAssistenciaPct: porAssistencia.map((r) => ({ ...r, cells: r.pctCells })),
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
       });
@@ -303,6 +336,8 @@
     actionsAnchor,
     PAGE_BUTTON_IDS,
     ANCHOR_ID,
+    fmtCount,
+    fmtPct,
   };
 
   // Anchored to the ROW that holds SIGC's buttons, not to the last button

@@ -15,11 +15,34 @@
   // end by the caller rather than folded into one of these.
   const SITUACAO_ORDER = [
     'Não Iniciado',
-    'Dig. Informante',
-    'Dig. Ibge',
-    'Em Validação',
+    'Digitação/Validação',
+    'Supervisão/Análise',
     'Concluído',
   ];
+
+  // Ports the 2025 report's recode (R/report.R:22-25) from raw SIGC
+  // situações into the Excel's four buckets.
+  //
+  // Deliberately WITHOUT the R code's `.default = "Supervisão/Análise"`:
+  // that silently absorbed any unrecognised status into a bucket it was
+  // never observed to belong to. Here an unmapped situação passes
+  // through unchanged — raw and (per situacaoClass) uncoloured — so a
+  // new SIGC status is visible as itself instead of being mislabelled.
+  //
+  // "Supervisão/Análise" remains a bucket the colour table knows about;
+  // nothing currently maps into it.
+  const SITUACAO_BUCKET = {
+    'Não Iniciado': 'Não Iniciado',
+    'Dig. Informante': 'Digitação/Validação',
+    'Dig. Ibge': 'Digitação/Validação',
+    'Em Validação': 'Digitação/Validação',
+    'Concluído': 'Concluído',
+  };
+
+  function situacaoRec(situacao) {
+    if (situacao === null || situacao === undefined) return situacao;
+    return SITUACAO_BUCKET[situacao] || situacao;
+  }
 
   // One column per ISO week, holding the LAST run of that week.
   //
@@ -76,7 +99,27 @@
     return `${r.municipio_codigo}|${r.questionario}`;
   }
 
-  // One line per município per questionário, with one cell per column.
+  // The three rows the Excel emits per município per questionário, in
+  // display order. situacao_rec holds the BUCKETED status (change #2);
+  // the críticas rows hold raw counts.
+  const MUNICIPIO_GRID_NAMES = [
+    'criticas_informativas',
+    'criticas_comparativas',
+    'situacao_rec',
+  ];
+
+  function cellForName(hit, name) {
+    if (!hit) return null;
+    if (name === 'situacao_rec') return situacaoRec(hit.situacao);
+    // Missing on a row (e.g. fixtures / not yet fetched) reads as null,
+    // same as a missing week.
+    return hit[name] ?? null;
+  }
+
+  // Three lines per município per questionário — one per
+  // MUNICIPIO_GRID_NAMES entry — with one cell per column. Replaces the
+  // old single-row-per-questionário shape, which dropped the críticas
+  // history entirely; that history is what this restores.
   function municipioGrid(allRows, columns) {
     // Display names come from the row with the latest from_ts for each
     // key, not whichever row is encountered first — getAll() returns
@@ -91,36 +134,43 @@
       }
     }
 
-    const byKey = new Map();
-    for (const [key, r] of latestByKey) {
-      byKey.set(key, {
-        key,
-        municipio_codigo: r.municipio_codigo,
-        municipio_nome: r.municipio_nome,
-        agencia_nome: r.agencia_nome,
-        questionario: r.questionario,
-        cells: [],
-      });
-    }
-
     const asOfCache = columns.map((c) =>
       (c.run_ts === null ? null : situacaoAsOf(allRows, c.run_ts)));
 
-    for (const [key, line] of byKey) {
-      line.cells = asOfCache.map((rows) => {
-        if (rows === null) return null;
-        const hit = rows.find((r) => gridKey(r) === key);
-        return hit ? hit.situacao : null;
-      });
+    const out = [];
+    for (const [key, r] of latestByKey) {
+      for (const name of MUNICIPIO_GRID_NAMES) {
+        out.push({
+          key: `${key}|${name}`,
+          municipio_codigo: r.municipio_codigo,
+          municipio_nome: r.municipio_nome,
+          agencia_nome: r.agencia_nome,
+          questionario: r.questionario,
+          name,
+          cells: asOfCache.map((rows) => {
+            if (rows === null) return null;
+            const hit = rows.find((row) => gridKey(row) === key);
+            return cellForName(hit, name);
+          }),
+        });
+      }
     }
 
-    return [...byKey.values()].sort((a, b) =>
+    // Sort by município/questionário first, keeping the três rows for a
+    // given (município, questionário) adjacent, in MUNICIPIO_GRID_NAMES
+    // order.
+    return out.sort((a, b) =>
       a.municipio_nome.localeCompare(b.municipio_nome, 'pt-BR') ||
-      a.questionario.localeCompare(b.questionario, 'pt-BR'));
+      a.questionario.localeCompare(b.questionario, 'pt-BR') ||
+      MUNICIPIO_GRID_NAMES.indexOf(a.name) - MUNICIPIO_GRID_NAMES.indexOf(b.name));
   }
 
   // Counts and within-group percentages. Percentages are of the group's
   // own total, matching the 2025 report's *_pct sheets (R/report.R:196-200).
+  //
+  // situações are bucketed via situacaoRec() before counting (change #2),
+  // so e.g. 'Dig. Ibge' and 'Dig. Informante' land in the same
+  // 'Digitação/Validação' row instead of two separate ones.
   function groupCounts(rows, groupFields) {
     const totals = new Map();
     const counts = new Map();
@@ -128,7 +178,8 @@
     for (const r of rows) {
       const group = groupFields.map((f) => r[f] ?? '').join(' | ');
       totals.set(group, (totals.get(group) || 0) + 1);
-      const k = `${group}\u0000${r.situacao}`;
+      const situacao = situacaoRec(r.situacao);
+      const k = `${group}\u0000${situacao}`;
       counts.set(k, (counts.get(k) || 0) + 1);
     }
 
@@ -143,11 +194,66 @@
       SITUACAO_ORDER.indexOf(a.situacao) - SITUACAO_ORDER.indexOf(b.situacao));
   }
 
+  // Per (group, situação-bucket) pair, one cell per column — the group
+  // tabs' Excel-matching shape (change #3): the Excel's
+  // situacao_assistencia / _pct sheets have one column per date, not a
+  // single current-snapshot column.
+  //
+  // pctCells are within-group-within-column percentages, mirroring
+  // groupCounts's own pct but recomputed per column since a group's
+  // total can itself change week to week (a município's row can be
+  // absent before its first observed run).
+  function groupCountsByColumn(allRows, groupFields, columns) {
+    const asOfCache = columns.map((c) =>
+      (c.run_ts === null ? null : situacaoAsOf(allRows, c.run_ts)));
+
+    const seen = new Map(); // group\u0000situacao -> {group, situacao}
+    const perColumnCounts = asOfCache.map((rows) => {
+      if (rows === null) return null;
+      const totals = new Map();
+      const counts = new Map();
+      for (const r of rows) {
+        const group = groupFields.map((f) => r[f] ?? '').join(' | ');
+        totals.set(group, (totals.get(group) || 0) + 1);
+        const situacao = situacaoRec(r.situacao);
+        const k = `${group}\u0000${situacao}`;
+        counts.set(k, (counts.get(k) || 0) + 1);
+        if (!seen.has(k)) seen.set(k, { group, situacao });
+      }
+      return { totals, counts };
+    });
+
+    const out = [];
+    for (const [k, { group, situacao }] of seen) {
+      const cells = [];
+      const pctCells = [];
+      for (const col of perColumnCounts) {
+        if (col === null) {
+          cells.push(null);
+          pctCells.push(null);
+          continue;
+        }
+        const n = col.counts.get(k) || 0;
+        cells.push(n);
+        const total = col.totals.get(group);
+        pctCells.push(total ? n / total : null);
+      }
+      out.push({ group, situacao, cells, pctCells });
+    }
+
+    return out.sort((a, b) =>
+      a.group.localeCompare(b.group, 'pt-BR') ||
+      SITUACAO_ORDER.indexOf(a.situacao) - SITUACAO_ORDER.indexOf(b.situacao));
+  }
+
   window.__municProSituacaoAggregate = {
     weekColumns,
     situacaoAsOf,
     municipioGrid,
     groupCounts,
+    groupCountsByColumn,
+    situacaoRec,
+    SITUACAO_BUCKET,
     SITUACAO_ORDER,
   };
 })();

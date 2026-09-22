@@ -26,6 +26,7 @@ test('manifest loads scripts in dependency order', () => {
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
   expect(manifest.content_scripts[0].js).toEqual([
     'common/munic-common.js',
+    'common/assistencias.js',
     'features/situacao-store/situacao-diff.js',
     'features/situacao-store/situacao-store.js',
     'features/situacao-fetch/situacao-parse.js',

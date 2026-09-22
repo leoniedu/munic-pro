@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 
 await import('../extension/common/munic-common.js');
+await import('../extension/common/assistencias.js');
 await import('../extension/features/situacao-report/situacao-aggregate.js');
 await import('../extension/features/situacao-report/situacao-report.js');
 
@@ -67,12 +68,22 @@ describe('makeButton', () => {
 });
 
 describe('situacaoClass', () => {
-  test('maps each known situação to its bucket class', () => {
+  // SITUACAO_CLASS now keys on the four Excel buckets only — the raw
+  // digitação variants ('Dig. Ibge', 'Dig. Informante', 'Em Validação')
+  // are no longer looked up directly; they must be recoded to
+  // 'Digitação/Validação' by situacaoRec() before reaching this table.
+  test('maps each bucket name to its class', () => {
     expect(R.situacaoClass('Não Iniciado')).toBe('munic-pro-nao-iniciado');
-    expect(R.situacaoClass('Dig. Ibge')).toBe('munic-pro-digitacao');
-    expect(R.situacaoClass('Dig. Informante')).toBe('munic-pro-digitacao');
-    expect(R.situacaoClass('Em Validação')).toBe('munic-pro-digitacao');
+    expect(R.situacaoClass('Digitação/Validação')).toBe('munic-pro-digitacao');
+    expect(R.situacaoClass('Supervisão/Análise')).toBe('munic-pro-supervisao');
     expect(R.situacaoClass('Concluído')).toBe('munic-pro-concluido');
+  });
+
+  // A raw (unbucketed) digitação variant is no longer a valid key — this
+  // is the change #2 contract: bucketing happens upstream in
+  // situacaoRec(), not here.
+  test('a raw digitação variant is not itself a class key', () => {
+    expect(R.situacaoClass('Dig. Ibge')).toBe('');
   });
 
   // An unknown value gets NO class, so it renders uncoloured and
@@ -89,23 +100,60 @@ describe('renderMunicipioTab', () => {
     { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
     { week: '2026-W38', run_ts: null },
   ];
-  const grid = [{
-    key: '2900702|Básico',
-    municipio_codigo: '2900702',
-    municipio_nome: 'Alagoinhas',
-    agencia_nome: 'ALAGOINHAS',
-    questionario: 'Básico',
-    cells: ['Não Iniciado', null],
-  }];
+  const grid = [
+    {
+      key: '2900702|Básico|criticas_informativas',
+      municipio_codigo: '2900702',
+      municipio_nome: 'Alagoinhas',
+      agencia_nome: 'ALAGOINHAS',
+      questionario: 'Básico',
+      name: 'criticas_informativas',
+      cells: [51, null],
+    },
+    {
+      key: '2900702|Básico|criticas_comparativas',
+      municipio_codigo: '2900702',
+      municipio_nome: 'Alagoinhas',
+      agencia_nome: 'ALAGOINHAS',
+      questionario: 'Básico',
+      name: 'criticas_comparativas',
+      cells: [20, null],
+    },
+    {
+      key: '2900702|Básico|situacao_rec',
+      municipio_codigo: '2900702',
+      municipio_nome: 'Alagoinhas',
+      agencia_nome: 'ALAGOINHAS',
+      questionario: 'Básico',
+      name: 'situacao_rec',
+      cells: ['Não Iniciado', null],
+    },
+  ];
 
   test('renders one row per grid line', () => {
     const el = R.renderMunicipioTab(grid, columns);
-    expect(el.querySelectorAll('tbody tr').length).toBe(1);
+    expect(el.querySelectorAll('tbody tr').length).toBe(3);
   });
 
   test('shows the questionário as its own column', () => {
     const el = R.renderMunicipioTab(grid, columns);
     expect(el.textContent).toContain('Básico');
+  });
+
+  // The Indicador column is the new one this change adds — it is what
+  // lets the três rows (críticas informativas, críticas comparativas,
+  // situação) be told apart.
+  test('has an Indicador column header', () => {
+    const el = R.renderMunicipioTab(grid, columns);
+    const ths = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
+    expect(ths).toContain('Indicador');
+  });
+
+  test('shows the name of each indicator row', () => {
+    const el = R.renderMunicipioTab(grid, columns);
+    expect(el.textContent).toContain('criticas_informativas');
+    expect(el.textContent).toContain('criticas_comparativas');
+    expect(el.textContent).toContain('situacao_rec');
   });
 
   // The header carries the real run date, so a stale column cannot be
@@ -122,45 +170,85 @@ describe('renderMunicipioTab', () => {
     expect(ths.some((t) => t.includes('2026-W38') && /sem coleta|—/i.test(t))).toBe(true);
   });
 
-  test('colours cells by situação', () => {
+  // Only situacao_rec rows are coloured. Críticas rows are plain
+  // numbers, matching the Excel where only the situação row is
+  // colour-coded.
+  test('colours only the situacao_rec row', () => {
     const el = R.renderMunicipioTab(grid, columns);
     expect(el.querySelector('.munic-pro-nao-iniciado')).toBeTruthy();
+    const rows = [...el.querySelectorAll('tbody tr')];
+    const criticasRow = rows.find((tr) => tr.textContent.includes('criticas_informativas'));
+    expect(criticasRow.querySelector('.munic-pro-nao-iniciado')).toBeNull();
+    expect(criticasRow.querySelector('.munic-pro-digitacao')).toBeNull();
+  });
+
+  test('críticas cells show plain numbers', () => {
+    const el = R.renderMunicipioTab(grid, columns);
+    const rows = [...el.querySelectorAll('tbody tr')];
+    const criticasRow = rows.find((tr) => tr.textContent.includes('criticas_informativas'));
+    expect(criticasRow.textContent).toContain('51');
   });
 
   // The gap week (run_ts: null) yields a null cell in the grid. It must
   // render as a visible placeholder — its own text and its own class —
   // never as a blank <td> that would be indistinguishable from missing
-  // data. This is the property a previous task's reviewer deferred to
-  // Task 8 as the only place it can be proven.
-  test('a gap cell shows the placeholder, not a blank cell', () => {
+  // data, in EVERY row type (críticas or situação).
+  test('a gap cell shows the placeholder, not a blank cell, in all three row types', () => {
     const el = R.renderMunicipioTab(grid, columns);
-    const tds = [...el.querySelectorAll('tbody tr')[0].querySelectorAll('td')];
-    const gapCell = tds[tds.length - 1];
-    expect(gapCell.textContent).toBe('—');
-    expect(gapCell.className).toContain('munic-pro-vazio');
-    expect(gapCell.className).not.toContain('munic-pro-nao-iniciado');
-    expect(gapCell.className).not.toContain('munic-pro-digitacao');
-    expect(gapCell.className).not.toContain('munic-pro-supervisao');
-    expect(gapCell.className).not.toContain('munic-pro-concluido');
+    for (const tr of [...el.querySelectorAll('tbody tr')]) {
+      const tds = [...tr.querySelectorAll('td')];
+      const gapCell = tds[tds.length - 1];
+      expect(gapCell.textContent).toBe('—');
+      expect(gapCell.className).toContain('munic-pro-vazio');
+      expect(gapCell.className).not.toContain('munic-pro-nao-iniciado');
+      expect(gapCell.className).not.toContain('munic-pro-digitacao');
+      expect(gapCell.className).not.toContain('munic-pro-supervisao');
+      expect(gapCell.className).not.toContain('munic-pro-concluido');
+    }
   });
 });
 
 describe('renderGroupTab', () => {
+  // Change #3: the group tabs now carry one column per date, not one
+  // snapshot column. counts is a list of {group, situacao, cells[]} (or
+  // pctCells[] for the percentage tab), parallel to `columns`.
+  const columns = [
+    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
+    { week: '2026-W39', run_ts: '2026-09-21T09:00:00' },
+  ];
   const counts = [
-    { group: 'A', situacao: 'Não Iniciado', n: 2, pct: 2 / 3 },
-    { group: 'A', situacao: 'Concluído', n: 1, pct: 1 / 3 },
+    { group: 'A', situacao: 'Não Iniciado', cells: [2, 1] },
+    { group: 'A', situacao: 'Concluído', cells: [1, 2] },
   ];
 
   test('one row per group-situação pair', () => {
-    const el = R.renderGroupTab(counts);
+    const el = R.renderGroupTab(counts, columns, R.fmtCount);
     expect(el.querySelectorAll('tbody tr').length).toBe(2);
   });
 
-  test('shows count and percentage together', () => {
-    const el = R.renderGroupTab(counts);
-    const text = el.textContent;
-    expect(text).toContain('2');
-    expect(text).toMatch(/66[.,]7\s*%/);
+  test('has one column per date, after group and situação', () => {
+    const el = R.renderGroupTab(counts, columns, R.fmtCount);
+    const ths = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
+    expect(ths.some((t) => t.includes('2026-W37'))).toBe(true);
+    expect(ths.some((t) => t.includes('2026-W39'))).toBe(true);
+  });
+
+  // This is the test that would fail against a per-snapshot
+  // implementation: the counts must differ between the two date columns.
+  test('counts differ across date columns', () => {
+    const el = R.renderGroupTab(counts, columns, R.fmtCount);
+    const row = [...el.querySelectorAll('tbody tr')][0];
+    const tds = [...row.querySelectorAll('td')].map((td) => td.textContent);
+    expect(tds).toContain('2');
+    expect(tds).toContain('1');
+  });
+
+  test('the percentage tab formats cells with fmtPct', () => {
+    const pctCounts = [
+      { group: 'A', situacao: 'Não Iniciado', cells: [2 / 3, 1 / 3] },
+    ];
+    const el = R.renderGroupTab(pctCounts, columns, R.fmtPct);
+    expect(el.textContent).toMatch(/66[.,]7\s*%/);
   });
 });
 
@@ -185,16 +273,22 @@ describe('buildPanel', () => {
     grid: [],
     columns: [],
     porAssistencia: [],
-    porAgencia: [],
+    porAssistenciaPct: [],
     warnings: [],
     lastRun: '2026-09-22T10:00:00',
   };
 
-  test('has the three tabs', () => {
+  // Change #3: "Agência × Município" is dropped entirely — with
+  // roughly one município per group, every row there read 100%, which
+  // was noise. The remaining tabs are Município, Assistência and
+  // Assistência %.
+  test('has the three tabs, without Agência × Município', () => {
     const panel = R.buildPanel(data);
     const tabs = [...panel.querySelectorAll('[data-munic-pro-tab]')]
       .map((t) => t.textContent.trim());
-    expect(tabs).toEqual(['Município', 'Agência', 'Agência × Município']);
+    expect(tabs).toEqual(['Município', 'Assistência', 'Assistência %']);
+    expect(tabs).not.toContain('Agência × Município');
+    expect(tabs).not.toContain('Agência');
   });
 
   test('shows warnings when present', () => {
