@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 // The manifest is the one place a permission can be added, so its shape is
 // asserted rather than reviewed by eye. MUNIC-PRO deliberately requests two
@@ -34,4 +34,20 @@ test('manifest loads scripts in dependency order', () => {
     'features/situacao-report/situacao-report.js',
     'features/situacao-export/situacao-export.js',
   ]);
+});
+
+// Chrome refuses to load an extension whose manifest names a file that is
+// not there — with an error about the icon, not about the manifest, which
+// sends you looking in the wrong place. The scaffold created icons/ but no
+// icons, so the first real load attempt failed. Pinned here so the next
+// missing asset fails a test instead.
+test('every file the manifest references exists on disk', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  const referenced = [
+    ...Object.values(manifest.icons || {}),
+    ...manifest.content_scripts.flatMap((cs) => cs.js || []),
+  ];
+  for (const rel of referenced) {
+    expect(existsSync(`extension/${rel}`)).toBe(true);
+  }
 });

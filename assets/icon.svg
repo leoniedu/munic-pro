@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- MUNIC-PRO icon source. Lives in assets/, NOT extension/, because the
+       network gate scans extension/ for absolute URLs and an SVG's xmlns is
+       one — a namespace identifier that is never fetched. Keeping the source
+       outside the shipped tree avoids weakening the gate for a build input.
+       Regenerate the PNGs with scripts/gen-icons.py.
+
+       Bars rising left to right: collection status advancing over time, which
+       is what this extension tracks. Same PRO blue and rounded square as
+       SIGC-PRO's pin, so the two read as siblings without claiming to do the
+       same job. -->
+  <rect width="128" height="128" rx="24" fill="#005a9c"/>
+  <rect x="28" y="76" width="18" height="26" rx="3" fill="#ffffff"/>
+  <rect x="55" y="58" width="18" height="44" rx="3" fill="#ffffff"/>
+  <rect x="82" y="34" width="18" height="68" rx="3" fill="#ffffff"/>
+</svg>
