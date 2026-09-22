@@ -201,7 +201,11 @@
   // with `cells` renamed to whichever field `fmt` is meant to read; both
   // tabs pass their own `cells`/`pctCells` array in as `cells` so this
   // stays a single renderer).
-  function renderGroupTab(counts, columns, fmt) {
+  // `field` names which array of cells to render — 'cells' (counts) or
+  // 'pctCells' (within-group percentages). Both tabs previously received
+  // the SAME object and differed only by `fmt`, so the percentage tabs ran
+  // fmtPct over raw counts: 18 municípios rendered as "1800,0%".
+  function renderGroupTab(counts, columns, fmt, field) {
     const head = el('tr', {}, [
       el('th', { text: 'Grupo' }),
       el('th', { text: 'Situação' }),
@@ -211,7 +215,7 @@
     const body = counts.map((c) => el('tr', {}, [
       el('td', { text: c.group }),
       el('td', { text: c.situacao, class: situacaoClass(c.situacao) }),
-      ...c.cells.map((cell) => el('td', {
+      ...(c[field || 'cells'] || []).map((cell) => el('td', {
         text: cell === null ? '—' : fmt(cell),
         class: cell === null ? 'munic-pro-vazio' : '',
       })),
@@ -425,9 +429,9 @@
     const panes = [
       renderMunicipioTab(data.grid, data.columns),
       renderGroupTab(data.porAssistencia, data.columns, fmtCount),
-      renderGroupTab(data.porAssistenciaPct, data.columns, fmtPct),
+      renderGroupTab(data.porAssistenciaPct, data.columns, fmtPct, 'pctCells'),
       renderGroupTab(data.porAgencia, data.columns, fmtCount),
-      renderGroupTab(data.porAgenciaPct, data.columns, fmtPct),
+      renderGroupTab(data.porAgenciaPct, data.columns, fmtPct, 'pctCells'),
     ];
 
     const buttons = tabNames.map((name, i) => {
@@ -538,9 +542,6 @@
       const { rows, warnings } = await FETCH.fetchSituacao(uf);
       const runTs = window.__municPro.localTimestamp();
       const { nChanged } = await STORE.saveSnapshot(rows, runTs, warnings);
-      // Auto-download so the history survives a cleared profile without
-      // anyone having to remember to export it.
-      EXPORT.downloadSnapshot(await STORE.getAll(), await STORE.getRuns());
       say(`${rows.length} linhas, ${nChanged} mudança(s).` +
           (warnings.length ? ` ${warnings.join(' | ')}` : ''));
     }
@@ -608,13 +609,23 @@
     // to explain the difference at the button was the tell that it did
     // not belong there. This is the shape that pivots without any
     // interval reasoning — one row per município per run.
-    const csv = makeButton('CSV', async () => {
+    const csv = makeButton('CSV-PRO', async () => {
       const STORE = window.__municProSituacaoStore;
       window.__municProSituacaoExport.downloadDenormalizedCsv(
         await STORE.getAll(), await STORE.getRuns());
     });
 
-    const actions = [relatorio, csv];
+    // The JSON snapshot used to download on every fetch. That put a file
+    // in Downloads each time the colleague opened the report, which is
+    // noise — it is a backup, taken when you want one.
+    const backup = makeButton('Backup JSON', async () => {
+      const STORE = window.__municProSituacaoStore;
+      window.__municProSituacaoExport.downloadSnapshot(
+        await STORE.getAll(), await STORE.getRuns());
+      say('backup baixado.');
+    });
+
+    const actions = [relatorio, csv, backup];
     for (const b of actions) row.appendChild(b);
     bar.appendChild(row);
     bar.appendChild(status);

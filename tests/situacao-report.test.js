@@ -455,7 +455,7 @@ describe('button styling and placement', () => {
     const status = bar.querySelector('#munic-pro-status');
     const row = bar.querySelector('#munic-pro-actions-row');
     expect(row.contains(status)).toBe(false);
-    expect(row.querySelectorAll('a').length).toBe(2);
+    expect(row.querySelectorAll('a').length).toBe(3);
   });
 
   test('the button row carries no Bootstrap grid class', () => {
@@ -469,12 +469,12 @@ describe('button styling and placement', () => {
     expect(R.buildActions().style.width).toBe('');
   });
 
-  test('the row holds exactly the two action buttons', () => {
+  test('the row holds exactly the three action buttons', () => {
     // Two of the four were reported missing on the live page; they were
     // off-screen rather than absent, but the count is worth pinning.
     const labels = [...R.buildActions().querySelectorAll('a')]
       .map((a) => a.textContent);
-    expect(labels).toEqual(['Relatório-PRO', 'CSV']);
+    expect(labels).toEqual(['Relatório-PRO', 'CSV-PRO', 'Backup JSON']);
   });
 });
 
@@ -1053,5 +1053,35 @@ describe('button label wrapping', () => {
   test('labels do not wrap inside the button', () => {
     expect(R.makeButton('Relatório-PRO', () => {}).style.whiteSpace)
       .toBe('nowrap');
+  });
+});
+
+describe('percentage tabs render percentages, not counts', () => {
+  // The live page showed "1800,0%" for an agência with 18 municípios: the
+  // percentage tabs received the SAME object as the count tabs and differed
+  // only by the formatter, so fmtPct ran over raw counts. groupCountsByColumn
+  // had always computed pctCells correctly — nothing ever read them.
+  const columns = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+  const counts = [{
+    group: 'ALAGOINHAS', situacao: 'Não Iniciado',
+    cells: [18], pctCells: [0.9],
+  }];
+
+  test('the percentage tab reads pctCells', () => {
+    const el = R.renderGroupTab(counts, columns, R.fmtPct, 'pctCells');
+    const tds = [...el.querySelectorAll('tbody td')];
+    expect(tds[tds.length - 1].textContent).toBe('90,0%');
+  });
+
+  test('the count tab still reads cells', () => {
+    const el = R.renderGroupTab(counts, columns, String, 'cells');
+    const tds = [...el.querySelectorAll('tbody td')];
+    expect(tds[tds.length - 1].textContent).toBe('18');
+  });
+
+  // The exact live symptom: a count of 18 must never render as 1800,0%.
+  test('a raw count is never shown as a percentage', () => {
+    const el = R.renderGroupTab(counts, columns, R.fmtPct, 'pctCells');
+    expect(el.textContent).not.toContain('1800');
   });
 });
