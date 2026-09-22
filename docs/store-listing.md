@@ -72,7 +72,7 @@ Adds unofficial tools to the SIGC MUNIC 2026 (IBGE) status report page:
 one button that fetches the current status and keeps a dated history of
 it (a five-tab panel — município, assistência, assistência %, agência,
 agência %), a CSV export of that history, and a full JSON backup of it.
-It requests two browser permissions (storage, downloads) strictly to
+It requests NO browser permissions at all, and exists strictly to
 keep that history locally and let the user save it — nothing is
 transmitted anywhere outside the SIGC server the data came from.
 ```
@@ -86,39 +86,29 @@ The extension injects a content script only on the SIGC MUNIC 2026 report page, 
 
 The only network call is one click-triggered POST to the SIGC server itself, same origin, in the user's existing session, fetching the current status for the whole UF (state). No other site is accessed, and there is no external resource of any kind — no CDN, no image, no font, no analytics.
 
-The `storage` and `downloads` permissions (justified separately below) exist solely to keep that history on the user's own machine and let them export it. Nothing is sent to the developer; no telemetry.
+The history is kept in the browser's own IndexedDB, on the user's machine, and exported through the browser's ordinary download mechanism — neither needs a permission. Nothing is sent to the developer; no telemetry.
 ```
 
 ## Storage permission justification (dashboard field)
 
-```
-The extension's whole purpose is to keep a history the SIGC portal itself
-does not: the page only ever shows the CURRENT status of each município
-and overwrites it on every update, so there is no way to see what changed
-week to week. The `storage` permission lets the extension use the
-browser's IndexedDB to keep that history locally, as SCD type-2 rows (one
-row per município/questionário/indicator, with the dates each state began
-and ended). This costs nothing extra for a município that never changes,
-however many times the report is run.
+**Not applicable — no permission is requested.** The `permissions` list is
+absent from the manifest.
 
-This is local storage only — chrome.storage itself is not used. Nothing
-in this history is ever transmitted anywhere: it is read back only to
-render the report panel and to build the CSV/JSON exports, both written
-to files on the user's own machine. Clearing the browser's site data
-deletes this history, which is exactly why the Backup JSON button exists.
-```
+The collection history is kept in IndexedDB, which is a *page* API,
+available to a MAIN-world content script without any declared permission.
+`chrome.storage` is not used anywhere. An earlier version declared
+`storage` and `downloads`; neither was ever exercised — there is no
+`chrome.*` call in `extension/` — and both were removed rather than
+justified, because the justification would have been false.
+
 
 ## Downloads permission justification (dashboard field)
 
-```
-The `downloads` permission lets the "CSV-PRO" and "Backup JSON" buttons
-save files (a CSV of the stored history, and a full JSON copy of it) to
-the user's own Downloads folder through Chrome's standard download
-mechanism. This is the only use of the permission: both files are built
-in memory from data already in the extension's local IndexedDB and never
-touch the network. The JSON backup exists specifically so the history
-survives even if the browser's stored data is later cleared.
-```
+**Not applicable — no permission is requested.** Exports are produced with
+`Blob` + `URL.createObjectURL` and an anchor click, which is the browser's
+ordinary download path and needs no permission. The `chrome.downloads` API
+is not used.
+
 
 ## Data safety / Privacy practices (dashboard form — required to submit)
 

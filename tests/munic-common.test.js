@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, setSystemTime } from 'bun:test';
 
 await import('../extension/common/munic-common.js');
 
@@ -137,9 +137,25 @@ describe('timestampSlug', () => {
     expect(slug.hora).toBe(ts.slice(11, 19).replace(/:/g, ''));
   });
 
-  test('defaults to new Date() when no argument provided', () => {
+  // Shape alone is not enough: a UTC timestamp matches /^\d{4}-\d{2}-\d{2}$/
+  // just as well as a local one. The no-argument branch is the path
+  // production actually uses (situacao-report.js), and reverting it to
+  // toISOString() passed the old shape-only assertion — the fourth
+  // instance of this defect class in this project. The clock is pinned to
+  // the window where UTC and BRT disagree on the DATE.
+  test('defaults to now, in LOCAL time, not UTC', () => {
+    // 2026-09-20 23:30 BRT is 2026-09-21 02:30 UTC — different days.
+    setSystemTime(new Date('2026-09-21T02:30:00Z'));
+    try {
+      expect(M.timestampSlug().data).toBe('2026-09-20');
+      expect(M.localTimestamp()).toBe('2026-09-20T23:30:00');
+    } finally {
+      setSystemTime();
+    }
+  });
+
+  test('the no-argument path still has the expected shape', () => {
     const slug = M.timestampSlug();
-    expect(typeof slug.data).toBe('string');
     expect(slug.data).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(slug.hora).toMatch(/^\d{6}$/);
   });

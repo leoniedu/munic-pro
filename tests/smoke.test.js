@@ -6,10 +6,27 @@ import { readFileSync, existsSync } from 'node:fs';
 // permissions sigc-pro does not -- storage and downloads -- and must never
 // acquire host_permissions: requests go to the SIGC origin the content
 // script already runs on.
-test('manifest requests only storage and downloads', () => {
+// The extension declares NO permissions. It ran in the MAIN world with
+// `storage` and `downloads` declared and neither ever used — there is no
+// `chrome.*` call anywhere in extension/. IndexedDB and Blob downloads are
+// page APIs, available without any permission at all.
+//
+// Declaring an unused permission is not harmless: it is a claim on the
+// Web Store form that has to be justified, and the justification would
+// have been false.
+test('manifest requests no permissions at all', () => {
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
-  expect(manifest.permissions.sort()).toEqual(['downloads', 'storage']);
+  expect(manifest.permissions).toBeUndefined();
   expect(manifest.host_permissions).toBeUndefined();
+});
+
+test('no chrome.* API is called, which is what makes that possible', () => {
+  const { execSync } = require('node:child_process');
+  const hits = execSync(
+    "grep -rn 'chrome\\.[a-z]' extension/ --include=*.js | grep -v '^\\s*//' || true",
+    { encoding: 'utf8' },
+  ).split('\n').filter((l) => l && !/\/\/.*chrome\./.test(l));
+  expect(hits).toEqual([]);
 });
 
 test('manifest targets the MUNIC 2026 hosts', () => {

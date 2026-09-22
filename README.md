@@ -26,19 +26,19 @@ não guarda.
 Na página **Relatório Situação Município** do SIGC MUNIC 2026, um botão azul
 ao lado dos nativos:
 
-- **Atualizar** — lê a situação de todos os municípios da UF selecionada e
-  guarda uma fotografia datada. Rodar de novo no mesmo dia não duplica nada.
-- **Relatório** — abre um painel com três abas:
-  - **Município** — uma linha por município e questionário (Básico e
-    Suplementar), uma coluna por semana, colorida por situação.
-  - **Agência** — municípios por situação e semana, em número e
-    percentual.
-  - **Agência × Município** — o mesmo, detalhado por agência e município.
-- **Exportar** — CSV (para LibreOffice ou R) e JSON (cópia de segurança do
-  histórico).
+- **Relatório-PRO** — lê a situação de todos os municípios da UF e guarda
+  uma fotografia datada, e então abre o painel. Só rebusca se a última
+  leitura tiver mais de um minuto, para não repetir a consulta a cada
+  clique; a linha de status diz qual caminho foi tomado.
+- **CSV-PRO** — uma linha por município por leitura, para análise fora
+  do navegador (LibreOffice, R).
+- **Backup JSON** — o histórico inteiro num arquivo, para que não se
+  perca se os dados do navegador forem limpos.
 
-A cada atualização o histórico completo também é baixado automaticamente em
-JSON, para que nada se perca se o perfil do navegador for limpo.
+O painel tem cinco abas: **Município** (uma linha por município,
+questionário e indicador, uma coluna por data, colorida por situação),
+**Assistência** e **Assistência %**, **Agência** e **Agência %**.
+
 
 ## Instalação
 
@@ -50,14 +50,13 @@ JSON, para que nada se perca se o perfil do navegador for limpo.
 
 **Nenhum dado sai do seu computador.**
 
-Diferentemente do SIGC-PRO — que não guarda nada e não pede permissão alguma —
-esta extensão **precisa** armazenar dados para existir: o histórico é o
-produto. Por isso pede duas permissões:
+Diferentemente do SIGC-PRO, esta extensão **guarda** dados: o histórico é
+o produto. Mas, como ele, **não pede permissão nenhuma** ao navegador — o
+IndexedDB e o download por Blob são APIs da própria página, e nenhum dos
+dois exige permissão declarada.
 
-- **`storage`** — guarda o histórico da situação da coleta no IndexedDB do
-  próprio navegador, na sua máquina.
-- **`downloads`** — grava a cópia de segurança em JSON na sua pasta de
-  Downloads.
+O histórico fica no navegador, na sua máquina. **Limpar os dados de
+navegação apaga o histórico** — é para isso que existe o Backup JSON.
 
 As requisições de rede vão **exclusivamente ao próprio servidor do SIGC**, nas
 mesmas URLs que a página já usa, e só mediante clique. Não há servidor
