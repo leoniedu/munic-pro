@@ -79,14 +79,15 @@ describe('fetchSituacao', () => {
   });
 
   // An expired session returns HTTP 200 carrying the login page, so a
-  // status check alone would treat it as success.
-  test('reports an expired session rather than a parse failure', async () => {
+  // status check alone would treat it as success. assertAuthenticated must
+  // run before parseSituacao to detect this and throw the SIGC session error.
+  test('reports an expired SIGC session', async () => {
     globalThis.fetch = async () => ({
       ok: true,
       status: 200,
       text: async () => '<form><input type="password" name="Password"></form>',
     });
-    await expect(F.fetchSituacao(29)).rejects.toThrow(/sess/i);
+    await expect(F.fetchSituacao(29)).rejects.toThrow(/A sessão do SIGC expirou/);
   });
 
   test('reports the F5 interstitial as a dead portal session', async () => {
@@ -95,7 +96,20 @@ describe('fetchSituacao', () => {
       status: 200,
       text: async () => '<html><title>Working...</title></html>',
     });
-    await expect(F.fetchSituacao(29)).rejects.toThrow(/portalweb|sess/i);
+    await expect(F.fetchSituacao(29)).rejects.toThrow(/A sessão do portalweb expirou/);
+  });
+
+  // Ordering test: if auth check runs after parsing instead of before,
+  // a body that is both a login page AND contains valid rows would parse
+  // successfully instead of throwing. This test forces correct ordering.
+  test('checks authentication before parsing the table', async () => {
+    const loginPageWithTable = '<form><input type="password" name="Password"></form>' + SAMPLE;
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => loginPageWithTable,
+    });
+    await expect(F.fetchSituacao(29)).rejects.toThrow(/A sessão do SIGC expirou/);
   });
 
   test('propagates a transport failure', async () => {
