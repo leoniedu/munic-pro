@@ -2879,6 +2879,12 @@ load the extension unpacked and check:
       `munic2026_YYYY-MM-DD.json` lands in Downloads.
 - [ ] A second **Atualizar** minutes later reports **0 mudanças** — the
       idempotence guarantee, visible.
+- [ ] **After a run, the Município tab's newest column header shows the day
+      you actually clicked.** This is the user-visible symptom of the
+      UTC/local timestamp bug found in the whole-branch review: before the
+      fix, any run after 21:00 local was stamped with the next calendar day
+      and bucketed into the following ISO week. Worth checking once in the
+      evening specifically — that is the only window where the bug showed.
 - [ ] **Relatório** opens the panel; all three tabs render and switch.
 - [ ] The Município tab shows one row per município **per questionário**.
 - [ ] Both CSV buttons download files that open correctly in LibreOffice
