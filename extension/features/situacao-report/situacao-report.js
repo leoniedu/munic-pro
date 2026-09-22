@@ -98,8 +98,12 @@
     a.className = 'btn btn-primary';
     a.textContent = text;
     a.style.minWidth = '85px';
-    // Spacing comes from the row's flex `gap`, not per-button margins —
-    // one rule instead of one-per-button plus a special case for the last.
+    // Inline-block, spaced by margin, exactly like SIGC's own buttons —
+    // their row lays out correctly, so ours copies its mechanics rather
+    // than introducing a flex context the status div would break.
+    a.style.display = 'inline-block';
+    a.style.marginLeft = '10px';
+    a.style.marginBottom = '6px';
     a.style.cursor = 'pointer';
     a.style.background = PRO_BLUE;
     a.style.borderColor = PRO_BLUE;
@@ -449,14 +453,21 @@
     // Plain flex instead, so the row is correct wherever it is mounted:
     // wraps rather than overflowing, and stays inside its parent's width.
     const bar = el('div', { id: 'munic-pro-actions' });
-    bar.style.display = 'flex';
-    bar.style.flexWrap = 'wrap';
-    bar.style.justifyContent = 'flex-end';
-    bar.style.alignItems = 'center';
-    bar.style.gap = '10px';
     bar.style.marginTop = '10px';
-    bar.style.width = '100%';
-    bar.style.boxSizing = 'border-box';
+    bar.style.textAlign = 'right';
+
+    // A plain block with text-align:right, NOT a flex row.
+    //
+    // Flex made the status <div> a flex ITEM: block-level with no flex
+    // sizing, it claimed a whole slot and forced a wrap, which then stacked
+    // the buttons in the narrow space left over. Verified against the live
+    // markup — the parent is div.box-footer with 20px side padding, and a
+    // width:100% child inside it fought that padding too.
+    //
+    // Inline-block buttons flow and wrap like SIGC's own row above, which
+    // is plain text-align:right markup and lays out correctly. The status
+    // is a block below them, out of the buttons' flow entirely.
+    const row = el('div', { id: 'munic-pro-actions-row' });
 
     const say = (msg) => { status.textContent = msg; };
 
@@ -543,7 +554,8 @@
     });
 
     const actions = [atualizar, relatorio, csvObs, csvMud];
-    for (const b of actions) bar.appendChild(b);
+    for (const b of actions) row.appendChild(b);
+    bar.appendChild(row);
     bar.appendChild(status);
     return bar;
   }

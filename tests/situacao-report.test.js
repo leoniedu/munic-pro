@@ -434,11 +434,25 @@ describe('button styling and placement', () => {
   // carried Bootstrap's `col-12`, which only behaves inside a `.row`, and
   // outside one its width rules pushed the last buttons past the container
   // edge — they only became visible if you zoomed out.
-  test('the button row is flex, so it wraps instead of overflowing', () => {
+  // Verified against the live markup: the parent is div.box-footer with
+  // 20px side padding, and SIGC's own button row above is plain
+  // text-align:right with inline-block buttons. Ours copies that.
+  //
+  // Flex was tried and broke: the status div became a flex ITEM, claimed a
+  // whole slot as a block-level child, and forced a wrap that stacked the
+  // buttons vertically in the space left over.
+  test('the button row is a plain right-aligned block, not flex', () => {
     const bar = R.buildActions();
-    expect(bar.style.display).toBe('flex');
-    expect(bar.style.flexWrap).toBe('wrap');
-    expect(bar.style.gap).toBe('10px');
+    expect(bar.style.display).not.toBe('flex');
+    expect(bar.style.textAlign).toBe('right');
+  });
+
+  test('the status is outside the buttons own row', () => {
+    const bar = R.buildActions();
+    const status = bar.querySelector('#munic-pro-status');
+    const row = bar.querySelector('#munic-pro-actions-row');
+    expect(row.contains(status)).toBe(false);
+    expect(row.querySelectorAll('a').length).toBe(4);
   });
 
   test('the button row carries no Bootstrap grid class', () => {
@@ -446,10 +460,10 @@ describe('button styling and placement', () => {
     expect(R.buildActions().className).not.toContain('col-');
   });
 
-  test('the button row cannot exceed its container width', () => {
-    const bar = R.buildActions();
-    expect(bar.style.width).toBe('100%');
-    expect(bar.style.boxSizing).toBe('border-box');
+  // width:100% on a child of a padded container fought that padding.
+  // Letting the block size itself is what SIGC's own row does.
+  test('the button row sets no explicit width', () => {
+    expect(R.buildActions().style.width).toBe('');
   });
 
   test('all four buttons are present in the row', () => {
