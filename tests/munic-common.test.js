@@ -114,3 +114,33 @@ describe('localTimestamp', () => {
     expect(M.isoWeek(new Date(M.localTimestamp(d)))).toBe(M.isoWeek(d));
   });
 });
+
+describe('timestampSlug', () => {
+  test('data field returns the wall-clock date, not the UTC next day', () => {
+    // At 21:30 local on Sunday 2026-09-20, toISOString() returns 2026-09-21T00:30:00Z.
+    // timestampSlug().data must be the wall-clock date 2026-09-20, not 2026-09-21.
+    const d = new Date(2026, 8, 20, 21, 30, 0);
+    expect(M.timestampSlug(d).data).toBe('2026-09-20');
+  });
+
+  test('hora field is the wall-clock time with colons removed', () => {
+    const d = new Date(2026, 8, 20, 21, 30, 0);
+    expect(M.timestampSlug(d).hora).toBe('213000');
+  });
+
+  test('data and hora come from the same instant', () => {
+    const d = new Date(2026, 8, 20, 21, 30, 45);
+    const slug = M.timestampSlug(d);
+    // Reconstruct: data is chars 0-10, hora is chars 11-19 of localTimestamp
+    const ts = M.localTimestamp(d);
+    expect(slug.data).toBe(ts.slice(0, 10));
+    expect(slug.hora).toBe(ts.slice(11, 19).replace(/:/g, ''));
+  });
+
+  test('defaults to new Date() when no argument provided', () => {
+    const slug = M.timestampSlug();
+    expect(typeof slug.data).toBe('string');
+    expect(slug.data).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(slug.hora).toMatch(/^\d{6}$/);
+  });
+});

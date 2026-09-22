@@ -107,11 +107,11 @@
       `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
-  function timestampSlug() {
-    const now = new Date();
+  function timestampSlug(now) {
+    const ts = localTimestamp(now);
     return {
-      data: now.toISOString().slice(0, 10),
-      hora: now.toTimeString().slice(0, 8).replace(/:/g, ''),
+      data: ts.slice(0, 10),
+      hora: ts.slice(11, 19).replace(/:/g, ''),
     };
   }
 
