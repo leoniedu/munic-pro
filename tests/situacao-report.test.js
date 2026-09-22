@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 
 await import('../extension/common/munic-common.js');
 await import('../extension/features/situacao-report/situacao-aggregate.js');
@@ -126,6 +126,23 @@ describe('renderMunicipioTab', () => {
     const el = R.renderMunicipioTab(grid, columns);
     expect(el.querySelector('.munic-pro-nao-iniciado')).toBeTruthy();
   });
+
+  // The gap week (run_ts: null) yields a null cell in the grid. It must
+  // render as a visible placeholder — its own text and its own class —
+  // never as a blank <td> that would be indistinguishable from missing
+  // data. This is the property a previous task's reviewer deferred to
+  // Task 8 as the only place it can be proven.
+  test('a gap cell shows the placeholder, not a blank cell', () => {
+    const el = R.renderMunicipioTab(grid, columns);
+    const tds = [...el.querySelectorAll('tbody tr')[0].querySelectorAll('td')];
+    const gapCell = tds[tds.length - 1];
+    expect(gapCell.textContent).toBe('—');
+    expect(gapCell.className).toContain('munic-pro-vazio');
+    expect(gapCell.className).not.toContain('munic-pro-nao-iniciado');
+    expect(gapCell.className).not.toContain('munic-pro-digitacao');
+    expect(gapCell.className).not.toContain('munic-pro-supervisao');
+    expect(gapCell.className).not.toContain('munic-pro-concluido');
+  });
 });
 
 describe('renderGroupTab', () => {
@@ -188,5 +205,49 @@ describe('buildPanel', () => {
   test('shows no warning banner when there are none', () => {
     const panel = R.buildPanel(data);
     expect(panel.querySelector('.munic-pro-avisos')).toBeNull();
+  });
+});
+
+describe('buildActions — Relatório panel placement', () => {
+  const realStore = window.__municProSituacaoStore;
+
+  afterEach(() => {
+    window.__municProSituacaoStore = realStore;
+  });
+
+  // The button row's own parent chain has no ancestor with class "card"
+  // (unlike the live SIGC page, where the row does sit inside one). This
+  // exercises the `bar.closest('.card') || bar.parentElement.parentElement`
+  // fallback: the panel must still land in the tree without throwing.
+  //
+  // Kept detached from document.body: mountWidget's own MutationObserver
+  // watches the live document for the same #munic-pro-actions id this
+  // buildActions() call also produces, and would otherwise tear this
+  // manually-built bar down mid-test as an unwanted mount.
+  test('inserts the panel even with no .card ancestor', async () => {
+    window.__municProSituacaoStore = {
+      getAll: async () => [],
+      getRuns: async () => [
+        { run_ts: '2026-09-22T10:00:00', warnings: [] },
+      ],
+    };
+
+    const root = document.createElement('div');
+    const grandparent = document.createElement('div');
+    const parent = document.createElement('div');
+    root.appendChild(grandparent);
+    grandparent.appendChild(parent);
+
+    const bar = window.__municProSituacaoReport.buildActions();
+    parent.appendChild(bar);
+
+    const relatorioButton = [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório');
+    relatorioButton.click();
+    // Let the async click handler's microtasks settle.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(root.querySelector('.munic-pro-panel')).toBeTruthy();
   });
 });

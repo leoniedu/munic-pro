@@ -8,7 +8,6 @@
 
   if (window.__municProSituacaoReport) return;
 
-  const { normalizeLabel, downloadFile } = window.__municPro;
   const AGG = window.__municProSituacaoAggregate;
 
   const TAG = '[munic-pro]';
