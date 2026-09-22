@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MUNIC-PRO",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Acompanhamento não oficial da coleta da MUNIC (IBGE): histórico da situação por município e relatórios por agência.",
   "icons": {
     "16": "icons/icon16.png",

@@ -41,8 +41,9 @@
     .munic-pro-vazio { color: #999; }
   `;
 
-  // This page's own action buttons, from its live markup. ANCHOR_ID is
-  // the last of them, so ours land after SIGC's.
+  // This page's own action buttons, from its live markup. ANCHOR_ID is the
+  // last of them; actionsAnchor() resolves from it to the row that contains
+  // it, so our buttons land on a line of their own below SIGC's.
   const PAGE_BUTTON_IDS = [
     'btnAtualizarCriticas', 'btnAbrir', 'btnAbrirPdf', 'btnAbrirExcel',
   ];
@@ -59,16 +60,30 @@
     return PAGE_BUTTON_IDS.every((id) => document.getElementById(id));
   }
 
-  // Mirrors SIGC's own buttons: <a class="btn btn-primary"> with the same
-  // inline metrics. No href — SIGC's are javascript: URLs rewritten by
-  // the F5 layer, and ours has nothing for it to rewrite.
+  // Same element and metrics as SIGC's own buttons —
+  // <a class="btn btn-primary"> — so ours sit naturally in the page, but in
+  // a darker blue so the colleague can tell at a glance which are the
+  // extension's and which are the portal's. A screenshot of the live page
+  // showed the two indistinguishable.
+  //
+  // No href: SIGC's are javascript: URLs rewritten by the F5 layer, and
+  // ours has nothing for it to rewrite.
+  // Same value SIGC-PRO uses, so the two extensions read as a set.
+  //
+  // Set inline rather than via a class: SIGC's own stylesheet defines
+  // .btn-primary, and an inline background beats it without an !important
+  // war or a specificity guess.
+  const PRO_BLUE = '#00437a';
+
   function makeButton(text, onClick) {
     const a = document.createElement('a');
     a.className = 'btn btn-primary';
     a.textContent = text;
     a.style.minWidth = '85px';
-    a.style.marginLeft = '10px';
+    a.style.marginRight = '10px';
     a.style.cursor = 'pointer';
+    a.style.background = PRO_BLUE;
+    a.style.borderColor = PRO_BLUE;
     a.addEventListener('click', onClick);
     return a;
   }
@@ -189,9 +204,18 @@
   // Builds the button row. Kept thin: every piece of logic it calls is
   // tested on its own.
   function buildActions() {
-    const status = el('span', { id: 'munic-pro-status' });
-    status.style.marginLeft = '10px';
-    const bar = el('span', { id: 'munic-pro-actions' });
+    // Its own line under the buttons, not trailing after them: the row is
+    // right-aligned, so a growing status message ("8 linhas, 3 mudança(s).
+    // Situação desconhecida: …") would shove the buttons leftward as it
+    // appears and snap them back when it clears.
+    const status = el('div', { id: 'munic-pro-status' });
+    status.style.marginTop = '6px';
+    status.style.minHeight = '1.2em';
+    // A block-level row, right-aligned to line up with SIGC's own button
+    // row above it. `text-sm-end` is the portal's own alignment class, so
+    // ours tracks theirs if the page's breakpoint behaviour changes.
+    const bar = el('div', { id: 'munic-pro-actions', class: 'col-12 text-sm-end' });
+    bar.style.marginTop = '10px';
 
     const say = (msg) => { status.textContent = msg; };
 
@@ -259,7 +283,11 @@
       window.__municProSituacaoExport.downloadStateChangeCsv(await STORE.getAll());
     });
 
-    for (const b of [atualizar, relatorio, csvObs, csvMud]) bar.appendChild(b);
+    const actions = [atualizar, relatorio, csvObs, csvMud];
+    for (const b of actions) bar.appendChild(b);
+    // No trailing margin on the last button: the row is right-aligned, so a
+    // trailing 10px would push the group off the edge SIGC's row sits on.
+    actions[actions.length - 1].style.marginRight = '0';
     bar.appendChild(status);
     return bar;
   }
@@ -272,17 +300,33 @@
     renderMunicipioTab,
     renderGroupTab,
     buildPanel,
+    actionsAnchor,
     PAGE_BUTTON_IDS,
     ANCHOR_ID,
   };
 
-  // Inserted after SIGC's last button, and re-inserted whenever the page
-  // re-renders and drops it. mountWidget also removes it if the page
-  // stops qualifying, so a SPA navigation leaves nothing orphaned.
+  // Anchored to the ROW that holds SIGC's buttons, not to the last button
+  // itself, and inserted after that row so our buttons get a line of their
+  // own.
+  //
+  // Anchoring to the button put four more items into a right-aligned,
+  // single-line group: they overflowed, wrapped mid-group, and left two of
+  // ours stranded on a second line with no visual relationship to the other
+  // two. A row of our own keeps them together and reads as a separate set
+  // of controls, which is what they are.
+  //
+  // Falls back to the button itself if the expected wrapper is absent, so a
+  // markup change degrades to the old placement rather than to nothing.
+  function actionsAnchor() {
+    const btn = document.getElementById(ANCHOR_ID);
+    if (!btn) return null;
+    return btn.closest('div.col-12') || btn;
+  }
+
   if (typeof document !== 'undefined' && document.body) {
     window.__municPro.mountWidget({
       id: 'munic-pro-actions',
-      anchor: () => document.getElementById(ANCHOR_ID),
+      anchor: actionsAnchor,
       insert: 'after',
       when: () => onSituacaoPage(),
       build: buildActions,

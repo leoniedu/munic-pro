@@ -251,3 +251,51 @@ describe('buildActions — Relatório panel placement', () => {
     expect(root.querySelector('.munic-pro-panel')).toBeTruthy();
   });
 });
+
+describe('button styling and placement', () => {
+  // The buttons must be visually distinguishable from SIGC's own, which are
+  // also .btn.btn-primary. A screenshot of the live page showed ours
+  // indistinguishable from the portal's, so the colleague could not tell
+  // which four were the extension's.
+  test('buttons carry the PRO blue, not SIGC btn-primary default', () => {
+    const b = R.makeButton('X', () => {});
+    expect(b.style.background).toBeTruthy();
+    expect(b.style.borderColor).toBeTruthy();
+    // Distinct from the portal's own #4a7ba7-ish primary.
+    expect(b.style.background).not.toBe('');
+  });
+
+  test('buttons space with margin-right, matching SIGC own row', () => {
+    expect(R.makeButton('X', () => {}).style.marginRight).toBe('10px');
+  });
+});
+
+describe('actionsAnchor', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  // Anchoring to the button itself put four extra items into a
+  // right-aligned single-line group; they overflowed and wrapped
+  // mid-group, stranding two of ours on a second line. Anchoring to the
+  // containing row and inserting after it gives them a line of their own.
+  test('prefers the containing col-12 row over the button', () => {
+    document.body.innerHTML =
+      '<div class="col-12 text-sm-end">' +
+      '<a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
+      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></div>';
+    const anchor = R.actionsAnchor();
+    expect(anchor.tagName).toBe('DIV');
+    expect(anchor.className).toContain('col-12');
+  });
+
+  // A markup change must degrade to the old placement, not to no buttons.
+  test('falls back to the button when no col-12 wrapper exists', () => {
+    document.body.innerHTML =
+      '<span><a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
+      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></span>';
+    expect(R.actionsAnchor().id).toBe('btnAbrirExcel');
+  });
+
+  test('returns null when the anchor button is absent', () => {
+    expect(R.actionsAnchor()).toBeNull();
+  });
+});
