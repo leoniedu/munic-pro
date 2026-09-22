@@ -11,7 +11,12 @@ cd "$ROOT"
 GATE="$ROOT/scripts/check-network.sh"
 TMPDIR_FILES=""
 
-cleanup() { for f in $TMPDIR_FILES; do rm -f "$f"; done; }
+cleanup() {
+  for f in $TMPDIR_FILES; do
+    git rm -q --cached --ignore-unmatch "$f" 2>/dev/null || true
+    rm -f "$f"
+  done
+}
 trap cleanup EXIT
 
 fixture() {
@@ -19,6 +24,10 @@ fixture() {
   mkdir -p "$(dirname "$path")"
   printf '%s\n' "$content" > "$path"
   TMPDIR_FILES="$TMPDIR_FILES $path"
+  # Staged, not merely written: the gate's working-tree scan reads
+  # `git ls-files` so that gitignored scratch cannot fail it, which means
+  # an untracked fixture is invisible to the very check it exercises.
+  git add -f "$path" 2>/dev/null || true
 }
 
 expect_fail() {

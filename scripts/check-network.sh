@@ -96,7 +96,13 @@ STORE_PATTERN='chromewebstore\.google\.com/detail|chrome\.google\.com/webstore/d
 if [ "$1" = "--staged" ]; then
   STORE_MATCHES=$(git grep --cached -nE "$STORE_PATTERN" -- . 2>/dev/null)
 else
-  STORE_MATCHES=$(grep -rnE "$STORE_PATTERN" . 2>/dev/null)
+  # git ls-files, not grep -r: a bare recursive grep sweeps .git/,
+  # node_modules/ and the gitignored .superpowers/ scratch directory,
+  # where a working note that merely MENTIONS the pattern failed the gate
+  # on its own tree. Only tracked files can reach a commit, so only
+  # tracked files are the gate's business — which is what the --staged
+  # path already does via git grep --cached.
+  STORE_MATCHES=$(git ls-files -z | xargs -0 grep -nE "$STORE_PATTERN" 2>/dev/null)
 fi
 [ -n "$STORE_MATCHES" ] && \
   fail "unlisted Chrome Web Store URL found in repo:" "$STORE_MATCHES"
