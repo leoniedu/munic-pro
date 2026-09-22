@@ -346,7 +346,7 @@ Create `extension/common/munic-common.js`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `bun test tests/munic-common.test.js`
-Expected: PASS, 13 tests
+Expected: PASS, 15 tests
 
 - [ ] **Step 5: Verify the network gate still passes**
 
@@ -720,7 +720,7 @@ Create `extension/features/situacao-fetch/situacao-parse.js`:
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-parse.test.js`
-Expected: PASS, 13 tests
+Expected: PASS, 15 tests
 
 - [ ] **Step 6: Run the full suite and the gate**
 
@@ -1936,7 +1936,7 @@ Create `extension/features/situacao-report/situacao-aggregate.js`:
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `bun test tests/situacao-aggregate.test.js`
-Expected: PASS, 17 tests
+Expected: PASS, 18 tests
 
 - [ ] **Step 5: Run the full suite and the gate**
 
