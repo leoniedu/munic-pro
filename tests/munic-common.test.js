@@ -93,3 +93,24 @@ describe('isoWeek', () => {
     expect(M.isoWeek(new Date('2026-01-08T10:00:00'))).toBe('2026-W02');
   });
 });
+
+describe('localTimestamp', () => {
+  test('matches the wall clock, not toISOString (which converts to UTC)', () => {
+    expect(M.localTimestamp(new Date(2026, 8, 20, 21, 30, 0)))
+      .toBe('2026-09-20T21:30:00');
+  });
+
+  test('zero-pads single-digit month, day, hour, minute and second', () => {
+    expect(M.localTimestamp(new Date(2026, 0, 5, 3, 7, 9)))
+      .toBe('2026-01-05T03:07:09');
+  });
+
+  // The exact case from the CRITICAL finding: a Sunday-evening run in a
+  // negative-offset zone. toISOString().slice(0,19) converts to UTC first,
+  // so re-parsing the stripped string as local shifts it onto Monday and
+  // into the next ISO week. localTimestamp must round-trip to the same week.
+  test('round-trips to the same ISO week as the wall-clock date (Sunday evening)', () => {
+    const d = new Date(2026, 8, 20, 21, 30); // Sunday 2026-09-20, 21:30 local
+    expect(M.isoWeek(new Date(M.localTimestamp(d)))).toBe(M.isoWeek(d));
+  });
+});

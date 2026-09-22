@@ -194,7 +194,7 @@ describe('buildPanel', () => {
     const panel = R.buildPanel(data);
     const tabs = [...panel.querySelectorAll('[data-munic-pro-tab]')]
       .map((t) => t.textContent.trim());
-    expect(tabs).toEqual(['Município', 'Assistência', 'Agência']);
+    expect(tabs).toEqual(['Município', 'Agência', 'Agência × Município']);
   });
 
   test('shows warnings when present', () => {

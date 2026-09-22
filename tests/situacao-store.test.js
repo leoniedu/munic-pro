@@ -70,11 +70,15 @@ describe('saveSnapshot', () => {
     const a = row('2900702', 'Básico', 'Não Iniciado');
     const b = row('2902054', 'Básico', 'Não Iniciado');
     await S.saveSnapshot([a, b], TS1, []);
-    await S.saveSnapshot([b], TS2, []);
+    const second = await S.saveSnapshot([b], TS2, []);
 
     const current = await S.getCurrent();
     expect(current.length).toBe(1);
     expect(current[0].municipio_codigo).toBe('2902054');
+    // A vanished município is a close, not a value change, but it is
+    // still shown to the user as a "mudança" — nChanged must count it.
+    expect(second.nChanged).toBe(1);
+    expect(second.nRows).toBe(1);
   });
 });
 

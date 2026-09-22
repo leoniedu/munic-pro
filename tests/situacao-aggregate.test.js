@@ -130,6 +130,59 @@ describe('municipioGrid', () => {
     const grid = A.municipioGrid(rows, cols);
     expect(grid[0].cells[2]).toBeNull();
   });
+
+  // getAll() returns rows in insertion order, i.e. the earliest-inserted
+  // (closed) row for a key comes first. Display names must come from the
+  // row with the latest from_ts, not whichever row is encountered first —
+  // otherwise a SIGC spelling correction never reaches the panel.
+  test('display names come from the row with the latest from_ts, not the first row', () => {
+    const renamed = [
+      { municipio_codigo: '2900702', municipio_nome: 'Alagoinhas',
+        agencia_nome: 'ALAGOINHAS', questionario: 'Básico',
+        situacao: 'Não Iniciado',
+        from_ts: '2026-09-07T09:00:00', until_ts: '2026-09-21T09:00:00' },
+      { municipio_codigo: '2900702', municipio_nome: 'Alagoinhas Corrigido',
+        agencia_nome: 'ALAGOINHAS NOVA', questionario: 'Básico',
+        situacao: 'Dig. Ibge',
+        from_ts: '2026-09-21T09:00:00', until_ts: null },
+    ];
+    const grid = A.municipioGrid(renamed, columns);
+    expect(grid[0].municipio_nome).toBe('Alagoinhas Corrigido');
+    expect(grid[0].agencia_nome).toBe('ALAGOINHAS NOVA');
+  });
+
+  describe('sort order across multiple municípios', () => {
+    // Three municípios across two agências, both questionários each.
+    // Includes an accent-collation pair (Araçás vs Aramari) so the
+    // 'pt-BR' locale argument in the comparator is load-bearing: a plain
+    // codepoint compare would order 'Araçás' after 'Aramari' (ç > a).
+    const multi = [];
+    const add = (codigo, nome, agencia, questionario) => {
+      multi.push({
+        municipio_codigo: codigo, municipio_nome: nome, agencia_nome: agencia,
+        questionario, situacao: 'Não Iniciado',
+        from_ts: '2026-09-07T09:00:00', until_ts: null,
+      });
+    };
+    add('1', 'Aramari', 'AG1', 'Básico');
+    add('1', 'Aramari', 'AG1', 'Suplementar');
+    add('2', 'Araçás', 'AG1', 'Básico');
+    add('2', 'Araçás', 'AG1', 'Suplementar');
+    add('3', 'Belmonte', 'AG2', 'Básico');
+    add('3', 'Belmonte', 'AG2', 'Suplementar');
+
+    test('sorts by municipio_nome (pt-BR collation) then questionario', () => {
+      const grid = A.municipioGrid(multi, columns);
+      expect(grid.map((g) => [g.municipio_nome, g.questionario])).toEqual([
+        ['Araçás', 'Básico'],
+        ['Araçás', 'Suplementar'],
+        ['Aramari', 'Básico'],
+        ['Aramari', 'Suplementar'],
+        ['Belmonte', 'Básico'],
+        ['Belmonte', 'Suplementar'],
+      ]);
+    });
+  });
 });
 
 describe('groupCounts', () => {

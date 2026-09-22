@@ -78,19 +78,29 @@
 
   // One line per município per questionário, with one cell per column.
   function municipioGrid(allRows, columns) {
-    const byKey = new Map();
+    // Display names come from the row with the latest from_ts for each
+    // key, not whichever row is encountered first — getAll() returns
+    // rows in insertion order, so "first" would otherwise mean the
+    // earliest (possibly closed, possibly misspelled) row.
+    const latestByKey = new Map();
     for (const r of allRows) {
       const key = gridKey(r);
-      if (!byKey.has(key)) {
-        byKey.set(key, {
-          key,
-          municipio_codigo: r.municipio_codigo,
-          municipio_nome: r.municipio_nome,
-          agencia_nome: r.agencia_nome,
-          questionario: r.questionario,
-          cells: [],
-        });
+      const prev = latestByKey.get(key);
+      if (!prev || String(r.from_ts) > String(prev.from_ts)) {
+        latestByKey.set(key, r);
       }
+    }
+
+    const byKey = new Map();
+    for (const [key, r] of latestByKey) {
+      byKey.set(key, {
+        key,
+        municipio_codigo: r.municipio_codigo,
+        municipio_nome: r.municipio_nome,
+        agencia_nome: r.agencia_nome,
+        questionario: r.questionario,
+        cells: [],
+      });
     }
 
     const asOfCache = columns.map((c) =>

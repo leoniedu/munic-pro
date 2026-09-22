@@ -96,6 +96,17 @@
     URL.revokeObjectURL(url);
   }
 
+  // A zone-less ISO string in LOCAL time. toISOString() would convert to
+  // UTC, and stripping the Z then makes every consumer re-parse it as
+  // local — shifting evening runs in a negative-offset zone onto the next
+  // day, and with them the ISO week the report buckets by.
+  function localTimestamp(now) {
+    const d = now || new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
   function timestampSlug() {
     const now = new Date();
     return {
@@ -173,6 +184,7 @@
     buildCsv,
     downloadFile,
     timestampSlug,
+    localTimestamp,
     isoWeek,
     mountWidget,
   };

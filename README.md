@@ -2,7 +2,7 @@
 
 Extensão de navegador (Chrome, Manifest V3) para acompanhar a coleta da
 **MUNIC 2026** (IBGE) — histórico da situação por município e relatórios por
-assistência e agência, direto na página do SIGC.
+agência, direto na página do SIGC.
 
 Projeto irmão do [SIGC-PRO](https://github.com/leoniedu/sigc-pro), no mesmo
 espírito e com as mesmas convenções, mas **separado de propósito**: o SIGC-PRO
@@ -31,9 +31,9 @@ ao lado dos nativos:
 - **Relatório** — abre um painel com três abas:
   - **Município** — uma linha por município e questionário (Básico e
     Suplementar), uma coluna por semana, colorida por situação.
-  - **Assistência** — municípios por situação e semana, em número e
+  - **Agência** — municípios por situação e semana, em número e
     percentual.
-  - **Agência** — o mesmo, detalhado por agência.
+  - **Agência × Município** — o mesmo, detalhado por agência e município.
 - **Exportar** — CSV (para LibreOffice ou R) e JSON (cópia de segurança do
   histórico).
 

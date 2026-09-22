@@ -159,7 +159,7 @@
       }));
     }
 
-    const tabNames = ['Município', 'Assistência', 'Agência'];
+    const tabNames = ['Município', 'Agência', 'Agência × Município'];
     const panes = [
       renderMunicipioTab(data.grid, data.columns),
       renderGroupTab(data.porAssistencia),
@@ -209,7 +209,7 @@
       say('buscando…');
       try {
         const { rows, warnings } = await FETCH.fetchSituacao(uf);
-        const runTs = new Date().toISOString().slice(0, 19);
+        const runTs = window.__municPro.localTimestamp();
         const { nChanged } = await STORE.saveSnapshot(rows, runTs, warnings);
         // Auto-download so the history survives a cleared profile
         // without anyone having to remember to export it.
