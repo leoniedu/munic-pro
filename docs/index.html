@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MUNIC-PRO — histórico não oficial da coleta MUNIC (IBGE)</title>
+<style>
+  :root { --blue: #00437a; --ink: #1a1a1a; --muted: #555; --bg: #f6f8fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: #fff; }
+  header { background: var(--blue); color: #fff; padding: 3rem 1rem 2.5rem; text-align: center; }
+  header h1 { margin: 0 0 .3rem; font-size: 2.4rem; letter-spacing: .02em; }
+  header p { margin: 0; opacity: .9; }
+  main { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  .aviso { background: #fff8e1; border: 1px solid #e6c96b; border-radius: 8px; padding: .8rem 1rem; margin: 1.5rem 0; font-size: .95rem; }
+  h2 { color: var(--blue); margin-top: 2.2rem; }
+  .card { background: var(--bg); border: 1px solid #e1e4e8; border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--muted); }
+  ol li { margin: .4rem 0; }
+  code { background: var(--bg); border: 1px solid #e1e4e8; border-radius: 4px; padding: .1rem .35rem; font-size: .9em; }
+  footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 2rem 1rem; border-top: 1px solid #e1e4e8; }
+  a { color: var(--blue); }
+</style>
+</head>
+<body>
+<header>
+  <h1>MUNIC-PRO</h1>
+  <p>Histórico não oficial da coleta MUNIC 2026 — Sistema Integrado de Gestão da Coleta (IBGE)</p>
+  <p style="opacity:.75; font-size:.85rem; margin-top:.4rem;">versão 0.1.26</p>
+</header>
+<main>
+  <div class="aviso">⚠️ Projeto independente, sem vínculo com o IBGE. Funcionalidades
+  em caráter de protótipo, para demonstração à equipe oficial do SIGC.</div>
+
+  <h2>O problema</h2>
+  <p>O SIGC mostra apenas a situação <strong>atual</strong> da coleta MUNIC. A
+  cada atualização, o valor anterior é sobrescrito — não há como ver o que
+  mudou desde a semana passada, nem acompanhar o ritmo de cada agência ao
+  longo do tempo. O MUNIC-PRO guarda uma fotografia a cada uso e monta o
+  histórico que o SIGC não guarda.</p>
+
+  <h2>Funcionalidades</h2>
+  <p>Na página <strong>Situação das Prefeituras, com Críticas da UF</strong>
+  do SIGC MUNIC 2026, uma segunda linha de botões azuis abaixo dos nativos —
+  que não são alterados:</p>
+
+  <div class="card">
+    <h3>📊 Relatório-PRO</h3>
+    <p>Consulta a situação atual de toda a UF selecionada (uma requisição ao
+    próprio servidor do SIGC) — a menos que a fotografia mais recente já
+    guardada tenha menos de um minuto. Guarda uma fotografia datada e abre
+    um painel com cinco abas: <strong>Município</strong> (uma linha por
+    município, questionário e indicador — críticas informativas, críticas
+    comparativas, situação — com uma coluna por semana ISO, colorida como
+    no relatório em Excel de 2025 que substitui; semanas sem consulta
+    aparecem como lacunas visíveis), <strong>Assistência</strong> e
+    <strong>Assistência %</strong> (agrupado pela tabela agência →
+    assistência da Bahia embutida na extensão), e <strong>Agência</strong> e
+    <strong>Agência %</strong>. Todas as tabelas têm ordenação, paginação,
+    busca geral e filtro por coluna, usando o jQuery/DataTables que a
+    própria página do SIGC já carrega.</p>
+  </div>
+  <div class="card">
+    <h3>📄 CSV-PRO</h3>
+    <p>Exporta o histórico guardado como CSV — uma linha por município por
+    consulta, separador <code>;</code>, com BOM, pronto para o Excel
+    brasileiro.</p>
+  </div>
+  <div class="card">
+    <h3>💾 Backup JSON</h3>
+    <p>Exporta o histórico completo guardado, como cópia de segurança —
+    útil porque limpar os dados de navegação do Chrome apaga o histórico
+    guardado no IndexedDB.</p>
+  </div>
+
+  <h2>Como o histórico é guardado</h2>
+  <p>Como um registro do tipo "SCD tipo 2" no IndexedDB do navegador: uma
+  linha por combinação de município, questionário e indicador, com as
+  datas em que cada estado começou e terminou a valer. Um município que
+  não muda de uma consulta para outra não custa nada a mais para guardar,
+  por mais vezes que a extensão seja usada.</p>
+
+  <h2>Instalação</h2>
+  <p><strong>Equipes de campo:</strong> a extensão é distribuída pela Chrome
+  Web Store em modo não listado — o link de instalação é repassado
+  internamente às equipes, com atualização automática.</p>
+  <p><strong>Avaliação / desenvolvimento</strong> (modo desenvolvedor):</p>
+  <ol>
+    <li>Baixe o repositório e descompacte (ou <code>git clone</code>).</li>
+    <li>No Chrome, abra <code>chrome://extensions</code>.</li>
+    <li>Ative o <strong>Modo do desenvolvedor</strong>.</li>
+    <li>Clique em <strong>Carregar sem compactação</strong> e selecione a pasta <code>extension/</code>.</li>
+    <li>Abra a página Situação das Prefeituras do SIGC MUNIC 2026 e use os botões <strong>PRO</strong>.</li>
+  </ol>
+  <p>Requer Chrome 111+. A extensão só age na página do SIGC MUNIC 2026 e
+  valida os botões nativos da página antes de se anexar a eles. Solicita
+  duas permissões — <code>storage</code>, para guardar o histórico
+  localmente, e <code>downloads</code>, para salvar os arquivos exportados
+  — e nenhum dado sai do seu computador: a única requisição de rede é a
+  consulta ao próprio servidor do SIGC, mediante clique.</p>
+</main>
+<footer>MUNIC-PRO · projeto não oficial · MIT · <a href="PRIVACY_POLICY.html">Política de Privacidade</a></footer>
+</body>
+</html>

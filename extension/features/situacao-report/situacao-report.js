@@ -395,6 +395,13 @@
         console.warn(`${TAG} não foi possível inicializar a tabela:`, err);
       }
     });
+
+    // Last, inside this function rather than at the call site: the panes
+    // were hidden BEFORE DataTables ran, so display:none is sitting on the
+    // bare <table> while the wrapper it just created — pager, length
+    // selector, filter box — has none. Leaving this to the caller meant a
+    // missing call showed up only on screen, as five stacked pagers.
+    reapplyPaneVisibility(panelEl);
   }
 
   // Shows or hides a tab's table.
@@ -425,6 +432,26 @@
     const root = paneRoot(pane);
     root.style.display = '';
     if (!visible) root.style.display = 'none';
+  }
+
+  // Re-applies tab visibility from the DOM.
+  //
+  // buildPanel hides the non-selected panes BEFORE DataTables runs, so the
+  // hide lands on the bare <table>. DataTables then wraps each table in a
+  // div.dataTables_wrapper carrying the pager, the length selector and the
+  // filter box — and that wrapper has no display set, so every tab's
+  // controls end up stacked on screen at once.
+  //
+  // Called after initialisation, this re-asserts the hide on whatever the
+  // current root is. Reads the selection from aria-selected rather than
+  // taking the pane array, so it works from the panel element alone.
+  function reapplyPaneVisibility(panelEl) {
+    const buttons = [...panelEl.querySelectorAll('[data-munic-pro-tab]')];
+    const tables = [...panelEl.querySelectorAll('table')];
+    buttons.forEach((b, i) => {
+      if (!tables[i]) return;
+      showPane(tables[i], b.getAttribute('aria-selected') === 'true');
+    });
   }
 
   function buildPanel(data) {
@@ -657,6 +684,7 @@
   window.__municProSituacaoReportInternals = {
     onSituacaoPage,
     buildActions,
+    reapplyPaneVisibility,
     indicadorLabel,
     showPane,
     paneRoot,

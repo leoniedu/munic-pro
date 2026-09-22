@@ -1159,3 +1159,120 @@ describe('column headers show the measurement date', () => {
       .toBe('04/01/2027');
   });
 });
+
+describe('pane visibility survives DataTables initialisation', () => {
+  // The live symptom: five stacked "linhas por página / Filtrar" blocks and
+  // five pagers, with different record counts (2.502 / 12 / 12 / 89 / 89) —
+  // every tab's controls on screen at once.
+  //
+  // Cause: buildPanel hides the non-selected panes BEFORE DataTables runs,
+  // so display:none lands on the bare <table>. DataTables then wraps each
+  // table in a div.dataTables_wrapper holding the pager, the length
+  // selector and the filter box — and that wrapper has no display set.
+  function wrapAll(panel) {
+    for (const t of panel.querySelectorAll('table')) {
+      const wr = document.createElement('div');
+      wr.className = 'dataTables_wrapper';
+      const pager = document.createElement('div');
+      pager.className = 'dataTables_paginate';
+      t.parentElement.insertBefore(wr, t);
+      wr.appendChild(pager);
+      wr.appendChild(t);
+    }
+  }
+
+  function panelWithTabs() {
+    const columns = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+    return R.buildPanel({
+      grid: [], columns,
+      porAssistencia: [], porAssistenciaPct: [],
+      porAgencia: [], porAgenciaPct: [],
+      warnings: [], lastRun: null,
+    });
+  }
+
+  test('exactly one tab wrapper is visible after wrapping', () => {
+    document.body.innerHTML = '';
+    const panel = panelWithTabs();
+    document.body.appendChild(panel);
+    wrapAll(panel);
+    R.reapplyPaneVisibility(panel);
+
+    const shown = [...panel.querySelectorAll('table')]
+      .filter((t) => t.closest('.dataTables_wrapper').style.display !== 'none');
+    expect(shown.length).toBe(1);
+  });
+
+  test('the visible one is the selected tab', () => {
+    document.body.innerHTML = '';
+    const panel = panelWithTabs();
+    document.body.appendChild(panel);
+    wrapAll(panel);
+    R.reapplyPaneVisibility(panel);
+
+    const tables = [...panel.querySelectorAll('table')];
+    expect(tables[0].closest('.dataTables_wrapper').style.display).toBe('');
+    expect(tables[1].closest('.dataTables_wrapper').style.display).toBe('none');
+  });
+
+  // The three tests above call reapplyPaneVisibility DIRECTLY, so they
+  // verify the helper but NOT that anything calls it — removing the call
+  // site left them all green. This one drives the real path: a DataTables
+  // stub that wraps tables the way the library does, through the same
+  // entry point the panel uses.
+  test('initPanelTables leaves exactly one wrapper visible', () => {
+    document.body.innerHTML = '';
+    const panel = panelWithTabs();
+    document.body.appendChild(panel);
+
+    const saved = { jQuery: window.jQuery, $: window.$ };
+    const dtApi = {
+      columns: () => ({ every() {} }),
+      page: () => ({ len: () => ({ draw() {} }) }),
+    };
+    const jq = (sel) => {
+      // Wrap on init, exactly as DataTables does.
+      if (sel && sel.tagName === 'TABLE' && !sel.closest('.dataTables_wrapper')) {
+        const wr = document.createElement('div');
+        wr.className = 'dataTables_wrapper';
+        const pager = document.createElement('div');
+        pager.className = 'dataTables_paginate';
+        sel.parentElement.insertBefore(wr, sel);
+        wr.appendChild(pager);
+        wr.appendChild(sel);
+      }
+      return { DataTable: () => dtApi, length: 1 };
+    };
+    jq.fn = { dataTable: { isDataTable: () => false } };
+    window.jQuery = jq;
+    window.$ = jq;
+
+    try {
+      // ONLY initPanelTables — no direct call to reapplyPaneVisibility.
+      // That is the point: if the re-apply is not wired into init, this
+      // fails. The tests above call the helper directly and would not.
+      R.initPanelTables(panel);
+      const shown = [...panel.querySelectorAll('table')].filter((t) => {
+        const root = t.closest('.dataTables_wrapper') || t;
+        return root.style.display !== 'none';
+      });
+      expect(shown.length).toBe(1);
+    } finally {
+      window.jQuery = saved.jQuery;
+      window.$ = saved.$;
+    }
+  });
+
+  test('switching tabs after wrapping moves the visible wrapper', () => {
+    document.body.innerHTML = '';
+    const panel = panelWithTabs();
+    document.body.appendChild(panel);
+    wrapAll(panel);
+    R.reapplyPaneVisibility(panel);
+
+    panel.querySelectorAll('[data-munic-pro-tab]')[2].click();
+    const tables = [...panel.querySelectorAll('table')];
+    expect(tables[0].closest('.dataTables_wrapper').style.display).toBe('none');
+    expect(tables[2].closest('.dataTables_wrapper').style.display).toBe('');
+  });
+});
