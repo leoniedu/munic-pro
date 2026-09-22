@@ -843,3 +843,27 @@ describe('tab switching with DataTables wrappers', () => {
     expect(t.style.display).toBe('none');
   });
 });
+
+describe('showPane across DataTables initialisation', () => {
+  // The live failure: panes are hidden BEFORE DataTables runs, so the hide
+  // lands on the bare <table>. After wrapping, showing the pane cleared the
+  // wrapper's display but left display:none on the table inside — the tab
+  // rendered its controls and "89 registros" with no rows beneath.
+  test('a pane hidden before wrapping still shows after wrapping', () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const t = document.createElement('table');
+    document.getElementById('host').appendChild(t);
+
+    R.showPane(t, false);            // hidden while still unwrapped
+    expect(t.style.display).toBe('none');
+
+    const w = document.createElement('div');   // DataTables wraps it
+    w.className = 'dataTables_wrapper';
+    t.parentElement.insertBefore(w, t);
+    w.appendChild(t);
+
+    R.showPane(t, true);             // now show it
+    expect(w.style.display).toBe('');
+    expect(t.style.display).toBe('');  // the table must not stay hidden
+  });
+});

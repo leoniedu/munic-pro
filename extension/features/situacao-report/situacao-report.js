@@ -365,7 +365,18 @@
   }
 
   function showPane(pane, visible) {
-    paneRoot(pane).style.display = visible ? '' : 'none';
+    // Clear the inline display on BOTH the table and its wrapper, then set
+    // it on whichever is the current root.
+    //
+    // Panes are hidden before DataTables runs, so the first hide lands on
+    // the bare <table>. Once DataTables wraps it, showing the pane cleared
+    // the wrapper but left display:none on the table inside — controls and
+    // "89 registros" visible, no rows. Clearing both makes the two orders
+    // equivalent.
+    pane.style.display = '';
+    const root = paneRoot(pane);
+    root.style.display = '';
+    if (!visible) root.style.display = 'none';
   }
 
   function buildPanel(data) {
