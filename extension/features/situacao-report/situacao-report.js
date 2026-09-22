@@ -43,6 +43,20 @@
     .munic-pro-concluido    { color: #0B77A0; background: #CAEEFB; }
     .munic-pro-avisos { background: #FFEB9C; padding: 6px; margin-bottom: 8px; }
     .munic-pro-vazio { color: #999; }
+    /* Per-column filter row (change #5), ported from sigc-pro's own
+       ultimo-movimento-map.js styling for the same control. Lighter than
+       the heading row above it, so the two read as heading-then-control
+       rather than as two header rows. */
+    tr.munic-pro-filtro-row th { background: #fafafa; padding: 2px 4px; }
+    tr.munic-pro-filtro-row input.munic-pro-filtro-col {
+      width: 100%; box-sizing: border-box; min-width: 0;
+      font: inherit; font-size: 11px; font-weight: normal;
+      padding: 2px 4px; border: 1px solid #ccc; border-radius: 2px;
+      background: #fff; color: inherit;
+    }
+    tr.munic-pro-filtro-row input.munic-pro-filtro-col:focus {
+      outline: 2px solid #1a73e8; outline-offset: -1px; border-color: #1a73e8;
+    }
   `;
 
   // This page's own action buttons, from its live markup. ANCHOR_ID is the
@@ -185,6 +199,155 @@
     ]);
   }
 
+  // Ported from sigc-pro's ultimo-movimento-map.js (initPanelTables /
+  // buildFiltroRow / wireFiltroRow / colunasBatem), which makes SIGC's
+  // own already-loaded jQuery + DataTables interactive over that
+  // extension's panel tables. Same pattern here, over this panel's
+  // tables. Nothing is vendored and no request is made: SIGC's page
+  // already loads /Scripts/DataTables/jquery.dataTables.min.js.
+
+  // Every body row must have as many cells as the header has columns.
+  // DataTables reports a mismatch through its own alert() — a modal a
+  // try/catch cannot contain — so this is checked BEFORE construction,
+  // never relied on to fail safely afterwards. An empty header (no
+  // thead) also returns false: there is nothing to initialize against.
+  function colunasBatem(tabela) {
+    const nCols = tabela.querySelectorAll('thead tr:first-child th').length;
+    if (nCols === 0) return false;
+    return [...tabela.querySelectorAll('tbody tr')].every(
+      (tr) => tr.querySelectorAll('td').length === nCols);
+  }
+
+  const FILTRO_ROW_CLASS = 'munic-pro-filtro-row';
+
+  // A text box under each heading, filtering that column alone through
+  // the DataTables API — see wireFiltroRow. Built in the thead (not a
+  // tfoot) so the boxes sit against the headings they belong to, which is
+  // also why wireFiltroRow stops the row's own clicks from re-sorting.
+  function buildFiltroRow(tabela) {
+    // Idempotent: initPanelTables can run again (Relatório rebuilds the
+    // panel), and a second row would stack a dead set of boxes over the
+    // live ones.
+    if (tabela.querySelector(`.${FILTRO_ROW_CLASS}`)) return null;
+    const thead = tabela.querySelector('thead');
+    const ths = [...tabela.querySelectorAll('thead tr:first-child th')];
+    if (!thead || ths.length === 0) return null;
+    const tr = document.createElement('tr');
+    tr.className = FILTRO_ROW_CLASS;
+    ths.forEach((th) => {
+      const cell = document.createElement('th');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'munic-pro-filtro-col';
+      // The heading text, so a screen reader hears which column this box
+      // belongs to — the visual association is position alone.
+      const rotulo = String(th.textContent || '').replace(/\s+/g, ' ').trim();
+      input.setAttribute('aria-label', `Filtrar ${rotulo}`);
+      input.title = `Filtrar por ${rotulo}`;
+      cell.appendChild(input);
+      tr.appendChild(cell);
+    });
+    thead.appendChild(tr);
+    return tr;
+  }
+
+  // Wired through the DataTables API rather than DOM filtering:
+  // column().search() respects the table's own dataset, so filtering
+  // works on off-page rows exactly like the global "Filtrar:" box does.
+  function wireFiltroRow(dt, tr) {
+    if (!tr) return;
+    // The boxes are an enhancement: a DataTables without the columns()
+    // API leaves the table sorted and paged, just unfiltered per column.
+    if (!dt || typeof dt.columns !== 'function') {
+      tr.remove();
+      return;
+    }
+    const celulas = [...tr.children];
+    // Sorting is bound to the header CELL, so a click to focus a box (or
+    // a keystroke inside it) would otherwise re-sort the column under it.
+    tr.addEventListener('click', (e) => e.stopPropagation());
+    let coluna = 0;
+    dt.columns().every(function each() {
+      const idx = typeof this.index === 'function' ? this.index() : coluna;
+      coluna += 1;
+      const celula = celulas[idx];
+      const input = celula && celula.querySelector('input');
+      if (!input) return;
+      input.addEventListener('input', () => {
+        if (this.search() === input.value) return;
+        this.search(input.value).draw();
+      });
+    });
+  }
+
+  // DataTables ships English chrome; every other string in this panel is
+  // Portuguese, so its own controls have to be too. Inlined, never
+  // fetched from DataTables' CDN language files — no third-party
+  // requests, by the same rule that keeps DataTables itself unvendored.
+  const DT_PT_BR = {
+    search: 'Filtrar:',
+    lengthMenu: '_MENU_ linhas por página',
+    info: 'Mostrando _START_ a _END_ de _TOTAL_ registros',
+    infoEmpty: 'Nenhum registro',
+    infoFiltered: '(filtrado de _MAX_ no total)',
+    zeroRecords: 'Nenhum registro encontrado',
+    emptyTable: 'Sem dados',
+    paginate: { first: 'Primeira', last: 'Última', next: 'Próxima', previous: 'Anterior' },
+  };
+
+  const PANEL_PAGE_LENGTH = 25;
+
+  // Initializes DataTables (sorting, paging, per-column filtering) on
+  // every table in the panel. A no-op — plain tables keep working,
+  // unsorted and unpaged — when window.jQuery or $.fn.dataTable is
+  // absent: the panel must never depend on DataTables existing.
+  function initPanelTables(panelEl) {
+    const jq = window.jQuery || window.$;
+    if (!jq || !jq.fn || !jq.fn.dataTable || !panelEl) return;
+    panelEl.querySelectorAll('table').forEach((tbl) => {
+      // The mismatch check guards CONSTRUCTION only: it runs before
+      // DataTable() is ever called on this table. Our builders keep
+      // header and body cell counts in step by construction (tested
+      // directly), so this is a backstop against a future edit, not a
+      // known case. Refusing to initialize costs sorting and paging;
+      // handing DataTables a mismatched table costs an undismissable
+      // alert() the whole page can't recover from.
+      try {
+        // Idempotent: Relatório can rebuild the panel and call this
+        // again. Re-calling DataTable({...}) on an already-claimed table
+        // throws, so an existing instance is adjusted in place instead.
+        if (jq.fn.dataTable.isDataTable(tbl)) {
+          const dtExistente = jq(tbl).DataTable();
+          wireFiltroRow(dtExistente, buildFiltroRow(tbl));
+          return;
+        }
+        if (!colunasBatem(tbl)) {
+          console.warn(`${TAG} tabela com contagem de colunas inconsistente; ` +
+            'não inicializada no DataTables.');
+          return;
+        }
+        // BEFORE the filter row exists, so colunasBatem's header count
+        // and DataTables' own column detection both see the original
+        // thead, undecorated.
+        const dt = jq(tbl).DataTable({
+          pageLength: PANEL_PAGE_LENGTH,
+          lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'Todos']],
+          order: [], // keep the order the panel built
+          language: DT_PT_BR,
+          // The filter row is ours, not a heading: without this
+          // DataTables reads it as part of the header and binds sorting
+          // to the boxes themselves.
+          orderCellsTop: true,
+        });
+        wireFiltroRow(dt, buildFiltroRow(tbl));
+      } catch (err) {
+        // A failed init is not fatal: the plain table still renders
+        // every row, just without sorting, paging or filtering.
+        console.warn(`${TAG} não foi possível inicializar a tabela:`, err);
+      }
+    });
+  }
+
   function buildPanel(data) {
     const panel = el('div', { class: 'munic-pro-panel' });
     panel.appendChild(el('style', { text: STYLE }));
@@ -196,13 +359,21 @@
       }));
     }
 
-    // "Agência × Município" is dropped (change #3): with roughly one
+    // "Agência × Município" stays dropped (change #3): with roughly one
     // município per group, every row there read 100%, which is noise.
-    const tabNames = ['Município', 'Assistência', 'Assistência %'];
+    // Agência / Agência % (plain, grouped by agência alone) are restored
+    // here to match the 2025 workbook's five sheets, in the same order:
+    // município grid, then assistência counts + percentages, then
+    // agência counts + percentages.
+    const tabNames = [
+      'Município', 'Assistência', 'Assistência %', 'Agência', 'Agência %',
+    ];
     const panes = [
       renderMunicipioTab(data.grid, data.columns),
       renderGroupTab(data.porAssistencia, data.columns, fmtCount),
       renderGroupTab(data.porAssistenciaPct, data.columns, fmtPct),
+      renderGroupTab(data.porAgencia, data.columns, fmtCount),
+      renderGroupTab(data.porAgenciaPct, data.columns, fmtPct),
     ];
 
     const buttons = tabNames.map((name, i) => {
@@ -290,11 +461,17 @@
       }));
       const porAssistencia = AGG.groupCountsByColumn(
         withAssistencia, ['assistencia_nome'], columns);
+      // agencia_nome IS a stored field (unlike assistencia_nome), so this
+      // groups allRows directly — no mapping step needed.
+      const porAgencia = AGG.groupCountsByColumn(
+        allRows, ['agencia_nome'], columns);
       const panel = buildPanel({
         grid: AGG.municipioGrid(allRows, columns),
         columns,
         porAssistencia,
         porAssistenciaPct: porAssistencia.map((r) => ({ ...r, cells: r.pctCells })),
+        porAgencia,
+        porAgenciaPct: porAgencia.map((r) => ({ ...r, cells: r.pctCells })),
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
       });
@@ -302,6 +479,9 @@
       // below the whole card, full width.
       const card = bar.closest('.card') || bar.parentElement.parentElement;
       card.parentElement.insertBefore(panel, card.nextSibling);
+      // After insertion, not before: DataTables reads each table's live
+      // layout, and an un-inserted table has none to read.
+      initPanelTables(panel);
       say('');
     });
 
@@ -338,31 +518,47 @@
     ANCHOR_ID,
     fmtCount,
     fmtPct,
+    colunasBatem,
+    buildFiltroRow,
+    wireFiltroRow,
+    initPanelTables,
+    FILTRO_ROW_CLASS,
   };
 
-  // Anchored to the ROW that holds SIGC's buttons, not to the last button
-  // itself, and inserted after that row so our buttons get a line of their
-  // own.
+  // Resolves to the PARENT of the row that holds SIGC's buttons, so our
+  // row is APPENDED into that same container — one more full-width row
+  // after SIGC's, still inside whatever card wraps them both.
   //
-  // Anchoring to the button put four more items into a right-aligned,
-  // single-line group: they overflowed, wrapped mid-group, and left two of
-  // ours stranded on a second line with no visual relationship to the other
-  // two. A row of our own keeps them together and reads as a separate set
-  // of controls, which is what they are.
+  // An earlier version anchored to the row itself and inserted 'after' it
+  // as the row's next SIBLING. On the live page that row is the last
+  // child of a flex/row container, so a sibling of it lands outside that
+  // container — outside the card's padded area — rather than below SIGC's
+  // row inside the card. Appending into the row's own parent keeps the
+  // new row a child of the same container SIGC's row is in, so it cannot
+  // land outside it.
   //
-  // Falls back to the button itself if the expected wrapper is absent, so a
-  // markup change degrades to the old placement rather than to nothing.
+  // Anchoring to the button itself (rather than the row) put four more
+  // items into a right-aligned, single-line group: they overflowed,
+  // wrapped mid-group, and left two of ours stranded on a second line
+  // with no visual relationship to the other two. A row of our own keeps
+  // them together and reads as a separate set of controls, which is what
+  // they are.
+  //
+  // Falls back to the button's own parent if the expected col-12 wrapper
+  // is absent, so a markup change degrades to a working placement rather
+  // than to nothing.
   function actionsAnchor() {
     const btn = document.getElementById(ANCHOR_ID);
     if (!btn) return null;
-    return btn.closest('div.col-12') || btn;
+    const row = btn.closest('div.col-12');
+    return (row ? row.parentElement : null) || btn.parentElement;
   }
 
   if (typeof document !== 'undefined' && document.body) {
     window.__municPro.mountWidget({
       id: 'munic-pro-actions',
       anchor: actionsAnchor,
-      insert: 'after',
+      insert: 'append',
       when: () => onSituacaoPage(),
       build: buildActions,
     });

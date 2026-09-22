@@ -274,21 +274,26 @@ describe('buildPanel', () => {
     columns: [],
     porAssistencia: [],
     porAssistenciaPct: [],
+    porAgencia: [],
+    porAgenciaPct: [],
     warnings: [],
     lastRun: '2026-09-22T10:00:00',
   };
 
-  // Change #3: "Agência × Município" is dropped entirely — with
-  // roughly one município per group, every row there read 100%, which
-  // was noise. The remaining tabs are Município, Assistência and
-  // Assistência %.
-  test('has the three tabs, without Agência × Município', () => {
+  // Change #3 (2025 excel parity, revisited): "Agência × Município" stays
+  // dropped — with roughly one município per group, every row there read
+  // 100%, which was noise. But the earlier cut also dropped the plain
+  // Agência view the 2025 workbook had (grouped by agência alone, not by
+  // agência AND município), so it is restored here as its own pair of
+  // tabs, mirroring Assistência / Assistência %.
+  test('has five tabs in the 2025-workbook order', () => {
     const panel = R.buildPanel(data);
     const tabs = [...panel.querySelectorAll('[data-munic-pro-tab]')]
       .map((t) => t.textContent.trim());
-    expect(tabs).toEqual(['Município', 'Assistência', 'Assistência %']);
+    expect(tabs).toEqual([
+      'Município', 'Assistência', 'Assistência %', 'Agência', 'Agência %',
+    ]);
     expect(tabs).not.toContain('Agência × Município');
-    expect(tabs).not.toContain('Agência');
   });
 
   test('shows warnings when present', () => {
@@ -344,6 +349,71 @@ describe('buildActions — Relatório panel placement', () => {
 
     expect(root.querySelector('.munic-pro-panel')).toBeTruthy();
   });
+
+  // The Agência tabs (change #1) group by agencia_nome directly — no
+  // assistência mapping involved — and, like Assistência, carry one
+  // column per date. A município moving from one agência's Não Iniciado
+  // bucket into Concluído between the two runs is what tells a real
+  // per-column implementation apart from one that just repeats the
+  // latest snapshot in every column: a repeated-snapshot bug would show
+  // the same counts in both date columns.
+  test('Relatório panel has an Agência tab whose counts differ across dates', async () => {
+    // Adjacent ISO weeks (no gap week between them), so weekColumns()
+    // yields exactly two columns and the two runs land one per column.
+    window.__municProSituacaoStore = {
+      getAll: async () => [
+        { municipio_codigo: '1', municipio_nome: 'Alagoinhas',
+          agencia_nome: 'ALAGOINHAS', questionario: 'Básico',
+          situacao: 'Não Iniciado',
+          from_ts: '2026-09-07T09:00:00', until_ts: '2026-09-14T09:00:00' },
+        { municipio_codigo: '1', municipio_nome: 'Alagoinhas',
+          agencia_nome: 'ALAGOINHAS', questionario: 'Básico',
+          situacao: 'Concluído',
+          from_ts: '2026-09-14T09:00:00', until_ts: null },
+      ],
+      getRuns: async () => [
+        { run_ts: '2026-09-07T09:00:00', warnings: [] },
+        { run_ts: '2026-09-14T09:00:00', warnings: [] },
+      ],
+    };
+
+    const root = document.createElement('div');
+    const grandparent = document.createElement('div');
+    const parent = document.createElement('div');
+    root.appendChild(grandparent);
+    grandparent.appendChild(parent);
+    const bar = window.__municProSituacaoReport.buildActions();
+    parent.appendChild(bar);
+
+    const relatorioButton = [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório');
+    relatorioButton.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const panel = root.querySelector('.munic-pro-panel');
+    expect(panel).toBeTruthy();
+    const tabs = [...panel.querySelectorAll('[data-munic-pro-tab]')];
+    const agenciaTab = tabs.find((t) => t.textContent.trim() === 'Agência');
+    expect(agenciaTab).toBeTruthy();
+
+    agenciaTab.click();
+    const idx = tabs.indexOf(agenciaTab);
+    const panes = [...panel.querySelectorAll('table')];
+    const agenciaPane = panes[idx];
+    expect(agenciaPane.textContent).toContain('ALAGOINHAS');
+
+    const rows = [...agenciaPane.querySelectorAll('tbody tr')];
+    const naoIniciadoRow = rows.find((tr) => tr.textContent.includes('Não Iniciado'));
+    const concluidoRow = rows.find((tr) => tr.textContent.includes('Concluído'));
+    const naoIniciadoCells = [...naoIniciadoRow.querySelectorAll('td')]
+      .slice(2).map((td) => td.textContent);
+    const concluidoCells = [...concluidoRow.querySelectorAll('td')]
+      .slice(2).map((td) => td.textContent);
+    // Column 1: 1 Não Iniciado, 0 Concluído. Column 2: the reverse.
+    expect(naoIniciadoCells).toEqual(['1', '0']);
+    expect(concluidoCells).toEqual(['0', '1']);
+  });
 });
 
 describe('button styling and placement', () => {
@@ -367,29 +437,328 @@ describe('button styling and placement', () => {
 describe('actionsAnchor', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  // Anchoring to the button itself put four extra items into a
-  // right-aligned single-line group; they overflowed and wrapped
-  // mid-group, stranding two of ours on a second line. Anchoring to the
-  // containing row and inserting after it gives them a line of their own.
-  test('prefers the containing col-12 row over the button', () => {
+  // The live markup nests the col-12 button row inside SIGC's flex/row
+  // container, which is itself the last child of the card body. The old
+  // contract anchored to the col-12 row and inserted 'after' it, as the
+  // row's NEXT SIBLING — landing outside the row's parent (and, on the
+  // live page, outside the card's padded area) rather than inside it.
+  // The new contract anchors to the row's PARENT and appends into it, so
+  // our row becomes one more child of the same container SIGC's row is
+  // in — a full-width row below it, still inside the card.
+  test('resolves to the parent of the containing col-12 row', () => {
     document.body.innerHTML =
+      '<div class="card"><div class="card-body">' +
+      '<div class="row">' +
       '<div class="col-12 text-sm-end">' +
       '<a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
-      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></div>';
+      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></div>' +
+      '</div></div></div>';
+    const row = document.querySelector('div.col-12');
     const anchor = R.actionsAnchor();
-    expect(anchor.tagName).toBe('DIV');
-    expect(anchor.className).toContain('col-12');
+    expect(anchor).toBe(row.parentElement);
+    expect(anchor.className).toContain('row');
   });
 
-  // A markup change must degrade to the old placement, not to no buttons.
-  test('falls back to the button when no col-12 wrapper exists', () => {
+  // Appending our row into that parent must not escape the card: the
+  // parent (and the mounted widget) both stay inside .card.
+  test('the resolved anchor stays inside the card', () => {
+    document.body.innerHTML =
+      '<div class="card"><div class="card-body">' +
+      '<div class="row">' +
+      '<div class="col-12 text-sm-end">' +
+      '<a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
+      '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></div>' +
+      '</div></div></div>';
+    const anchor = R.actionsAnchor();
+    expect(anchor.closest('.card')).toBeTruthy();
+  });
+
+  // A markup change must degrade to a working placement, not to no
+  // buttons: with no col-12 wrapper, fall back to the button's own
+  // parent so the widget still mounts somewhere sane.
+  test('falls back to the button\'s parent when no col-12 wrapper exists', () => {
     document.body.innerHTML =
       '<span><a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
       '<a id="btnAbrirPdf"></a><a id="btnAbrirExcel"></a></span>';
-    expect(R.actionsAnchor().id).toBe('btnAbrirExcel');
+    const span = document.querySelector('span');
+    expect(R.actionsAnchor()).toBe(span);
   });
 
   test('returns null when the anchor button is absent', () => {
     expect(R.actionsAnchor()).toBeNull();
+  });
+});
+
+describe('table column counts (DataTables mismatch guard)', () => {
+  // sigc-pro documents that DataTables reports a header/body column-count
+  // mismatch through its own alert() — a modal a try/catch cannot contain.
+  // The builders must keep header and body cell counts equal by
+  // construction; this asserts that invariant directly rather than
+  // trusting it.
+  const columns = [
+    { week: '2026-W37', run_ts: '2026-09-07T09:00:00' },
+    { week: '2026-W38', run_ts: null },
+  ];
+
+  test('renderMunicipioTab keeps header and body cell counts equal', () => {
+    const grid = [
+      { key: 'k1', municipio_codigo: '1', municipio_nome: 'A',
+        agencia_nome: 'AG', questionario: 'Básico', name: 'situacao_rec',
+        cells: ['Não Iniciado', null] },
+    ];
+    const el = R.renderMunicipioTab(grid, columns);
+    expect(R.colunasBatem(el)).toBe(true);
+  });
+
+  test('renderGroupTab keeps header and body cell counts equal', () => {
+    const counts = [
+      { group: 'A', situacao: 'Não Iniciado', cells: [2, 1] },
+      { group: 'A', situacao: 'Concluído', cells: [1, 2] },
+    ];
+    const el = R.renderGroupTab(counts, columns, R.fmtCount);
+    expect(R.colunasBatem(el)).toBe(true);
+  });
+
+  test('colunasBatem is false for a genuinely mismatched table', () => {
+    document.body.innerHTML =
+      '<table><thead><tr><th>A</th><th>B</th></tr></thead>' +
+      '<tbody><tr><td>1</td></tr></tbody></table>';
+    expect(R.colunasBatem(document.querySelector('table'))).toBe(false);
+  });
+
+  test('colunasBatem is true for an empty-header-free table (no thead)', () => {
+    document.body.innerHTML = '<table><tbody><tr><td>1</td></tr></tbody></table>';
+    // No header at all — nCols is 0, which sigc-pro's own colunasBatem
+    // treats as "do not initialize" (false), a safe default here too.
+    expect(R.colunasBatem(document.querySelector('table'))).toBe(false);
+  });
+});
+
+describe('initPanelTables — jQuery/DataTables absent', () => {
+  // The panel must never depend on DataTables existing: with no
+  // window.jQuery (or no $.fn.dataTable), the plain tables stay exactly
+  // as rendered — still working, just unsorted and unpaged.
+  test('does nothing when window.jQuery is absent', () => {
+    const savedJquery = window.jQuery;
+    const saved$ = window.$;
+    delete window.jQuery;
+    delete window.$;
+    try {
+      document.body.innerHTML =
+        '<div id="p"><table><thead><tr><th>A</th></tr></thead>' +
+        '<tbody><tr><td>1</td></tr></tbody></table></div>';
+      const panel = document.getElementById('p');
+      expect(() => R.initPanelTables(panel)).not.toThrow();
+      // Plain table still intact: no filter row injected, no throw.
+      expect(panel.querySelectorAll('tr').length).toBe(2);
+    } finally {
+      if (savedJquery !== undefined) window.jQuery = savedJquery;
+      if (saved$ !== undefined) window.$ = saved$;
+    }
+  });
+
+  test('does nothing when jQuery exists but has no dataTable plugin', () => {
+    const savedJquery = window.jQuery;
+    window.jQuery = function fakeJq() { return { fn: {} }; };
+    window.jQuery.fn = {};
+    try {
+      document.body.innerHTML =
+        '<div id="p"><table><thead><tr><th>A</th></tr></thead>' +
+        '<tbody><tr><td>1</td></tr></tbody></table></div>';
+      const panel = document.getElementById('p');
+      expect(() => R.initPanelTables(panel)).not.toThrow();
+    } finally {
+      if (savedJquery !== undefined) window.jQuery = savedJquery; else delete window.jQuery;
+    }
+  });
+
+  test('handles a null panel element without throwing', () => {
+    expect(() => R.initPanelTables(null)).not.toThrow();
+  });
+});
+
+describe('initPanelTables — with a fake jQuery/DataTables', () => {
+  // A minimal fake of the jQuery + DataTables surface initPanelTables
+  // actually touches: $(el).DataTable({...}) returning an instance with
+  // columns().every(...) and search()/draw(). This is enough to prove
+  // wiring without pulling in the real DataTables library, which SIGC's
+  // own page supplies at runtime and this project deliberately never
+  // vendors (network gate: no third-party libraries in extension/).
+  function installFakeDataTables() {
+    const registry = new WeakMap();
+
+    function makeInstance(tbl) {
+      const nCols = tbl.querySelectorAll('thead tr:first-child th').length;
+      const searches = new Array(nCols).fill('');
+      const instance = {
+        page: { len: () => instance },
+        draw: () => instance,
+        columns() {
+          return {
+            every(fn) {
+              for (let i = 0; i < nCols; i += 1) {
+                const ctx = {
+                  index: () => i,
+                  search(term) {
+                    if (term === undefined) return searches[i];
+                    searches[i] = term;
+                    return ctx;
+                  },
+                  draw: () => ctx,
+                };
+                fn.call(ctx);
+              }
+              return this;
+            },
+          };
+        },
+      };
+      return instance;
+    }
+
+    function jq(elOrSelector) {
+      const tbl = typeof elOrSelector === 'string'
+        ? document.querySelector(elOrSelector) : elOrSelector;
+      return {
+        DataTable(opts) {
+          if (opts !== undefined) {
+            const instance = makeInstance(tbl);
+            registry.set(tbl, instance);
+            return instance;
+          }
+          return registry.get(tbl);
+        },
+      };
+    }
+    jq.fn = {
+      dataTable: {
+        isDataTable: (tbl) => registry.has(tbl),
+      },
+    };
+    window.jQuery = jq;
+    window.$ = jq;
+    return registry;
+  }
+
+  afterEach(() => {
+    delete window.jQuery;
+    delete window.$;
+  });
+
+  test('adds a per-column filter row to the thead', () => {
+    installFakeDataTables();
+    document.body.innerHTML =
+      '<div id="p"><table><thead><tr><th>Grupo</th><th>Situação</th></tr></thead>' +
+      '<tbody><tr><td>A</td><td>Não Iniciado</td></tr></tbody></table></div>';
+    const panel = document.getElementById('p');
+    R.initPanelTables(panel);
+    const filtroRow = panel.querySelector('thead tr:last-child');
+    const inputs = filtroRow.querySelectorAll('input');
+    expect(inputs.length).toBe(2);
+  });
+
+  // Portuguese wording, matching sigc-pro's own filter-row labels.
+  test('filter inputs carry Portuguese aria-label and title', () => {
+    installFakeDataTables();
+    document.body.innerHTML =
+      '<div id="p"><table><thead><tr><th>Grupo</th></tr></thead>' +
+      '<tbody><tr><td>A</td></tr></tbody></table></div>';
+    const panel = document.getElementById('p');
+    R.initPanelTables(panel);
+    const input = panel.querySelector('thead tr:last-child input');
+    expect(input.getAttribute('aria-label')).toBe('Filtrar Grupo');
+    expect(input.title).toBe('Filtrar por Grupo');
+  });
+
+  // Idempotency: Relatório can be clicked again, rebuilding the panel and
+  // calling initPanelTables a second time on tables DataTables already
+  // claimed. A second filter row stacked over the first is the known
+  // sigc-pro failure mode this must not repeat.
+  test('calling initPanelTables twice does not stack a second filter row', () => {
+    installFakeDataTables();
+    document.body.innerHTML =
+      '<div id="p"><table><thead><tr><th>Grupo</th></tr></thead>' +
+      '<tbody><tr><td>A</td></tr></tbody></table></div>';
+    const panel = document.getElementById('p');
+    R.initPanelTables(panel);
+    R.initPanelTables(panel);
+    const filtroRows = panel.querySelectorAll(`.${R.FILTRO_ROW_CLASS}`);
+    expect(filtroRows.length).toBe(1);
+  });
+
+  test('typing in a filter input calls column().search() and draw()', () => {
+    installFakeDataTables();
+    document.body.innerHTML =
+      '<div id="p"><table><thead><tr><th>Grupo</th></tr></thead>' +
+      '<tbody><tr><td>A</td></tr></tbody></table></div>';
+    const panel = document.getElementById('p');
+    R.initPanelTables(panel);
+    const input = panel.querySelector('thead tr:last-child input');
+    input.value = 'zona';
+    input.dispatchEvent(new Event('input'));
+    const tbl = panel.querySelector('table');
+    const dt = window.jQuery(tbl).DataTable();
+    expect(dt.columns().every).toBeTruthy();
+  });
+
+  // A table not meant to be interactive (this panel has none today, but
+  // the guard mirrors sigc-pro's own "skip tables that fail the column
+  // check") must not be handed to DataTable() at all.
+  test('a column-mismatched table is skipped, not handed to DataTable()', () => {
+    installFakeDataTables();
+    document.body.innerHTML =
+      '<div id="p"><table id="bad"><thead><tr><th>A</th><th>B</th></tr></thead>' +
+      '<tbody><tr><td>1</td></tr></tbody></table></div>';
+    const panel = document.getElementById('p');
+    expect(() => R.initPanelTables(panel)).not.toThrow();
+    expect(panel.querySelector(`.${R.FILTRO_ROW_CLASS}`)).toBeNull();
+  });
+});
+
+describe('Relatório end-to-end with jQuery absent', () => {
+  const realStore = window.__municProSituacaoStore;
+
+  afterEach(() => {
+    window.__municProSituacaoStore = realStore;
+    delete window.jQuery;
+    delete window.$;
+  });
+
+  // Full click-through with no DataTables in the page at all — the
+  // extension's own baseline environment until SIGC's page has loaded
+  // it, and the contract for any page that never loads it.
+  test('the panel renders with plain, working tables when jQuery is absent', async () => {
+    delete window.jQuery;
+    delete window.$;
+    window.__municProSituacaoStore = {
+      getAll: async () => [
+        { municipio_codigo: '1', municipio_nome: 'Alagoinhas',
+          agencia_nome: 'ALAGOINHAS', questionario: 'Básico',
+          situacao: 'Concluído',
+          from_ts: '2026-09-07T09:00:00', until_ts: null },
+      ],
+      getRuns: async () => [{ run_ts: '2026-09-07T09:00:00', warnings: [] }],
+    };
+
+    const root = document.createElement('div');
+    const grandparent = document.createElement('div');
+    const parent = document.createElement('div');
+    root.appendChild(grandparent);
+    grandparent.appendChild(parent);
+    const bar = window.__municProSituacaoReport.buildActions();
+    parent.appendChild(bar);
+
+    const relatorioButton = [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório');
+    expect(() => relatorioButton.click()).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const panel = root.querySelector('.munic-pro-panel');
+    expect(panel).toBeTruthy();
+    // Every table still has its rows, still readable, just no filter row.
+    expect(panel.querySelectorAll('table').length).toBeGreaterThan(0);
+    expect(panel.textContent).toContain('ALAGOINHAS');
+    expect(panel.querySelector('.sigc-pro-filtro-row, [class*="filtro-row"]')).toBeNull();
   });
 });
