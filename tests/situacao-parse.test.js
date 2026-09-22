@@ -10,7 +10,7 @@ const SAMPLE = readFileSync('tests/fixtures/situacao-sample.html', 'utf8');
 describe('parseSituacao', () => {
   test('returns one row per município per questionário', () => {
     const { rows } = parseSituacao(SAMPLE);
-    expect(rows.length).toBe(6);
+    expect(rows.length).toBe(8);
   });
 
   test('splits the "codigo - nome" cells', () => {
@@ -52,11 +52,21 @@ describe('parseSituacao', () => {
     expect(rows[2].criticas_comparativas).toBe(1);
   });
 
+  test('splits on the FIRST " - " only to preserve hyphenated names', () => {
+    const { rows } = parseSituacao(SAMPLE);
+    const wanderley = rows.find((r) => r.municipio_codigo === '2933174');
+    expect(wanderley).toBeTruthy();
+    expect(wanderley.municipio_nome).toBe('Wanderley - Distrito Sede');
+  });
+
   // The response carries modal markup containing another <table>. Taking
   // "the first table" would eventually pick up the wrong one; the parser
-  // targets #tblMunicipios by id.
+  // targets #tblMunicipios by id. With decoy tables before and after,
+  // a positional selector would pick the wrong one and fail on both
+  // row count and content.
   test('ignores tables outside #tblMunicipios', () => {
     const { rows } = parseSituacao(SAMPLE);
+    expect(rows.length).toBe(8);
     expect(rows.some((r) => r.uf_sigla.includes('mistaken'))).toBe(false);
   });
 
@@ -77,6 +87,14 @@ describe('parseSituacao', () => {
 
   test('throws when a column is missing or renamed', () => {
     const html = SAMPLE.replace('<th class="text-start">Questionário</th>', '');
+    expect(() => parseSituacao(html)).toThrow(/colunas/i);
+  });
+
+  test('throws when a column is renamed in place (same-length, different content)', () => {
+    const html = SAMPLE.replace(
+      '<th class="text-start">Situação</th>',
+      '<th class="text-start">Estado</th>',
+    );
     expect(() => parseSituacao(html)).toThrow(/colunas/i);
   });
 
