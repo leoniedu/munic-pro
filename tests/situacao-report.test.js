@@ -341,7 +341,7 @@ describe('buildActions — Relatório panel placement', () => {
     parent.appendChild(bar);
 
     const relatorioButton = [...bar.querySelectorAll('a')]
-      .find((a) => a.textContent === 'Relatório');
+      .find((a) => a.textContent === 'Relatório-PRO');
     relatorioButton.click();
     // Let the async click handler's microtasks settle.
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -386,7 +386,7 @@ describe('buildActions — Relatório panel placement', () => {
     parent.appendChild(bar);
 
     const relatorioButton = [...bar.querySelectorAll('a')]
-      .find((a) => a.textContent === 'Relatório');
+      .find((a) => a.textContent === 'Relatório-PRO');
     relatorioButton.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -452,7 +452,7 @@ describe('button styling and placement', () => {
     const status = bar.querySelector('#munic-pro-status');
     const row = bar.querySelector('#munic-pro-actions-row');
     expect(row.contains(status)).toBe(false);
-    expect(row.querySelectorAll('a').length).toBe(4);
+    expect(row.querySelectorAll('a').length).toBe(2);
   });
 
   test('the button row carries no Bootstrap grid class', () => {
@@ -466,14 +466,12 @@ describe('button styling and placement', () => {
     expect(R.buildActions().style.width).toBe('');
   });
 
-  test('all four buttons are present in the row', () => {
+  test('the row holds exactly the two action buttons', () => {
     // Two of the four were reported missing on the live page; they were
     // off-screen rather than absent, but the count is worth pinning.
     const labels = [...R.buildActions().querySelectorAll('a')]
       .map((a) => a.textContent);
-    expect(labels).toEqual([
-      'Atualizar', 'Relatório', 'CSV observações', 'CSV mudanças',
-    ]);
+    expect(labels).toEqual(['Relatório-PRO', 'CSV']);
   });
 });
 
@@ -792,7 +790,7 @@ describe('Relatório end-to-end with jQuery absent', () => {
     parent.appendChild(bar);
 
     const relatorioButton = [...bar.querySelectorAll('a')]
-      .find((a) => a.textContent === 'Relatório');
+      .find((a) => a.textContent === 'Relatório-PRO');
     expect(() => relatorioButton.click()).not.toThrow();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -948,5 +946,101 @@ describe('zero-valued cells', () => {
       [line], [{ week: '2026-W38', run_ts: null }]);
     const tds = [...el.querySelectorAll('tbody td')];
     expect(tds[tds.length - 1].textContent).toBe('—');
+  });
+});
+
+describe('staleness check before refetching', () => {
+  // Relatório-PRO refetches only when the newest run is older than a
+  // minute — a double-click guard, not a cache. Anything longer would risk
+  // presenting yesterday's reading as today's.
+  const AGORA = Date.now();
+  // localTimestamp, NOT toISOString: stored run_ts values are zone-less
+  // LOCAL time, and the code parses them as such. Using toISOString here
+  // would write a UTC instant that reads as hours in the future under
+  // BRT — the same trap the whole-branch review found in the code.
+  const iso = (ms) => window.__municPro.localTimestamp(new Date(ms));
+
+  // These stubs replace module-level globals, so they must be restored —
+  // without this, every later test in the run inherits them. A first
+  // version of this block did not, and broke 28 tests downstream.
+  const saved = {};
+  beforeEach(() => {
+    for (const k of ['__municProSituacaoFetchInternals', '__municProSituacaoFetch',
+                     '__municProSituacaoExport', '__municProSituacaoStore']) {
+      saved[k] = window[k];
+    }
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete window[k]; else window[k] = v;
+    }
+  });
+
+  function stub(lastRunMs, onFetch) {
+    window.__municProSituacaoFetchInternals = { readUf: () => '29' };
+    window.__municProSituacaoFetch = {
+      fetchSituacao: async () => { onFetch(); return { rows: [], warnings: [] }; },
+    };
+    window.__municProSituacaoExport = { downloadSnapshot: () => {} };
+    window.__municProSituacaoStore = {
+      getAll: async () => [],
+      getRuns: async () => (lastRunMs === null
+        ? [] : [{ run_ts: iso(lastRunMs), warnings: [] }]),
+      saveSnapshot: async () => ({ nChanged: 0, nRows: 0 }),
+    };
+  }
+
+  test('a run seconds old is not refetched', async () => {
+    let fetched = false;
+    stub(AGORA - 10 * 1000, () => { fetched = true; });
+    const bar = window.__municProSituacaoReport.buildActions();
+    document.body.appendChild(bar);
+    [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório-PRO').click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetched).toBe(false);
+  });
+
+  test('a run older than a minute is refetched', async () => {
+    let fetched = false;
+    stub(AGORA - 5 * 60 * 1000, () => { fetched = true; });
+    const bar = window.__municProSituacaoReport.buildActions();
+    document.body.appendChild(bar);
+    [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório-PRO').click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetched).toBe(true);
+  });
+
+  test('no history at all is refetched', async () => {
+    let fetched = false;
+    stub(null, () => { fetched = true; });
+    const bar = window.__municProSituacaoReport.buildActions();
+    document.body.appendChild(bar);
+    [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório-PRO').click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetched).toBe(true);
+  });
+});
+
+describe('group tab argument order', () => {
+  // A wrong argument order to groupCountsByColumn produced EMPTY group
+  // labels rather than an error — silent, and only visible on screen.
+  test('group labels are populated, not blank', () => {
+    const rows = [{
+      municipio_codigo: '1', municipio_nome: 'M',
+      agencia_codigo: '290070200', agencia_nome: 'ALAGOINHAS',
+      questionario: 'Básico', situacao: 'Concluído',
+      criticas_informativas: 0, criticas_comparativas: 0,
+      from_ts: '2026-09-21T09:00:00', until_ts: null,
+    }];
+    const cols = [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }];
+    const out = window.__municProSituacaoAggregate.groupCountsByColumn(rows, ['agencia_nome'], cols);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].group).toBe('ALAGOINHAS');
   });
 });

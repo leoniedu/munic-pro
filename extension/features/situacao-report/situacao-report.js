@@ -486,89 +486,129 @@
 
     const say = (msg) => { status.textContent = msg; };
 
-    const atualizar = makeButton('Atualizar', async () => {
+    // How old the newest run may be before Relatório-PRO refetches.
+    // One minute: essentially just a double-click guard. Anything longer
+    // risks presenting a stale reading as current, and the fetch is a
+    // single request.
+    const VALIDADE_MS = 60 * 1000;
+
+    async function atualizarSeVelho() {
       const FETCH = window.__municProSituacaoFetch;
       const STORE = window.__municProSituacaoStore;
       const EXPORT = window.__municProSituacaoExport;
+      const FETCH_INTERNALS = window.__municProSituacaoFetchInternals;
+
+      // Without the fetch layer there is nothing to refresh from, but the
+      // stored history is still worth showing — so fall through to the
+      // panel rather than throwing and leaving the colleague with nothing.
+      if (!FETCH || !FETCH_INTERNALS) {
+        say('sem a camada de busca; mostrando o histórico guardado.');
+        return;
+      }
+
+      const runs = await STORE.getRuns();
+      const ultimo = runs.length ? runs[runs.length - 1].run_ts : null;
+      const idadeMs = ultimo
+        ? Date.now() - new Date(ultimo).getTime()
+        : Infinity;
+
+      if (idadeMs < VALIDADE_MS) {
+        // Say so explicitly: without this the colleague cannot tell a
+        // fresh reading from a cached one, which is the whole risk of
+        // fetching conditionally.
+        const min = Math.max(1, Math.round(idadeMs / 60000));
+        say(`dados de ${min} min atrás (não rebuscado).`);
+        return;
+      }
+
       // Only the UF is read from the page. The Agência dropdown is
       // ignored on purpose: this report is UF-wide ("Críticas da UF"),
       // and a snapshot narrowed to one agência would make the SCD diff
       // close every município outside it.
-      const uf = window.__municProSituacaoFetchInternals.readUf();
+      const uf = FETCH_INTERNALS.readUf();
       if (!uf) { say('Selecione a Unidade Estadual.'); return; }
 
       say('buscando…');
+      const { rows, warnings } = await FETCH.fetchSituacao(uf);
+      const runTs = window.__municPro.localTimestamp();
+      const { nChanged } = await STORE.saveSnapshot(rows, runTs, warnings);
+      // Auto-download so the history survives a cleared profile without
+      // anyone having to remember to export it.
+      EXPORT.downloadSnapshot(await STORE.getAll(), await STORE.getRuns());
+      say(`${rows.length} linhas, ${nChanged} mudança(s).` +
+          (warnings.length ? ` ${warnings.join(' | ')}` : ''));
+    }
+
+    // One button instead of the old Atualizar + Relatório pair: two steps
+    // where the colleague only ever wanted "show me the current picture".
+    const relatorio = makeButton('Relatório-PRO', async () => {
+      const STORE = window.__municProSituacaoStore;
       try {
-        const { rows, warnings } = await FETCH.fetchSituacao(uf);
-        const runTs = window.__municPro.localTimestamp();
-        const { nChanged } = await STORE.saveSnapshot(rows, runTs, warnings);
-        // Auto-download so the history survives a cleared profile
-        // without anyone having to remember to export it.
-        EXPORT.downloadSnapshot(await STORE.getAll(), await STORE.getRuns());
-        say(`${rows.length} linhas, ${nChanged} mudança(s).` +
-            (warnings.length ? ` ${warnings.join(' | ')}` : ''));
+        await atualizarSeVelho();
       } catch (err) {
         console.error(TAG, err);
         say(`erro: ${err.message}`);
+        return;   // no panel on a failed fetch — stale data unannounced
+                  // is worse than none
       }
-    });
 
-    const relatorio = makeButton('Relatório', async () => {
-      const STORE = window.__municProSituacaoStore;
       const existing = document.querySelector('.munic-pro-panel');
       if (existing) existing.remove();
 
       const allRows = await STORE.getAll();
       const runs = await STORE.getRuns();
-      if (!runs.length) { say('Sem histórico ainda — clique em Atualizar.'); return; }
+      if (!runs.length) { say('Sem histórico ainda.'); return; }
 
       const columns = AGG.weekColumns(runs);
-      // assistencia_nome is not a stored field — it is derived from
-      // agencia_codigo via the vendored Bahia mapping (change #4), so
-      // groupCountsByColumn() can group by it like any other field.
+      const current = AGG.situacaoAsOf(allRows, runs[runs.length - 1].run_ts);
+      // assistencia_nome is not a stored field — it is derived from the
+      // agência code through the vendored lookup.
       const { assistenciaDe } = window.__municProAssistencias;
-      const withAssistencia = allRows.map((r) => ({
+      // Signature is (allRows, groupFields, columns) — argument order
+      // matters and a wrong one silently yields empty group labels.
+      //
+      // assistencia_nome is derived, not stored, so the rows are decorated
+      // with it before grouping; agencia_nome is a stored field and needs
+      // no decoration.
+      const rowsComAssistencia = allRows.map((r) => ({
         ...r,
         assistencia_nome: assistenciaDe(r.agencia_codigo, r.agencia_nome),
       }));
       const porAssistencia = AGG.groupCountsByColumn(
-        withAssistencia, ['assistencia_nome'], columns);
-      // agencia_nome IS a stored field (unlike assistencia_nome), so this
-      // groups allRows directly — no mapping step needed.
+        rowsComAssistencia, ['assistencia_nome'], columns);
       const porAgencia = AGG.groupCountsByColumn(
         allRows, ['agencia_nome'], columns);
+
       const panel = buildPanel({
         grid: AGG.municipioGrid(allRows, columns),
         columns,
         porAssistencia,
-        porAssistenciaPct: porAssistencia.map((r) => ({ ...r, cells: r.pctCells })),
+        porAssistenciaPct: porAssistencia,
         porAgencia,
-        porAgenciaPct: porAgencia.map((r) => ({ ...r, cells: r.pctCells })),
+        porAgenciaPct: porAgencia,
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
       });
-      // The button row sits in a right-aligned div; the panel belongs
-      // below the whole card, full width.
+
       const card = bar.closest('.card') || bar.parentElement.parentElement;
       card.parentElement.insertBefore(panel, card.nextSibling);
       // After insertion, not before: DataTables reads each table's live
       // layout, and an un-inserted table has none to read.
       initPanelTables(panel);
-      say('');
     });
 
-    const csvObs = makeButton('CSV observações', async () => {
+    // One CSV, not two. The state-change shape (one row per change, with
+    // from/until) was dropped: both carried the same history, and having
+    // to explain the difference at the button was the tell that it did
+    // not belong there. This is the shape that pivots without any
+    // interval reasoning — one row per município per run.
+    const csv = makeButton('CSV', async () => {
       const STORE = window.__municProSituacaoStore;
       window.__municProSituacaoExport.downloadDenormalizedCsv(
         await STORE.getAll(), await STORE.getRuns());
     });
 
-    const csvMud = makeButton('CSV mudanças', async () => {
-      const STORE = window.__municProSituacaoStore;
-      window.__municProSituacaoExport.downloadStateChangeCsv(await STORE.getAll());
-    });
-
-    const actions = [atualizar, relatorio, csvObs, csvMud];
+    const actions = [relatorio, csv];
     for (const b of actions) row.appendChild(b);
     bar.appendChild(row);
     bar.appendChild(status);
