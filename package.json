@@ -1,0 +1,7 @@
+{
+  "name": "munic-pro-dev",
+  "private": true,
+  "devDependencies": {
+    "@happy-dom/global-registrator": "20.11.0"
+  }
+}

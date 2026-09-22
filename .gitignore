@@ -1,0 +1,5 @@
+.remember/
+.DS_Store
+dist/munic-pro-extension/
+node_modules/
+.worktrees/

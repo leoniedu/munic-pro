@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+
+# NOTE: unlike sigc-pro, this project has no privacy gate banning
+# chrome.storage — storing the collection history IS the product here. The
+# network gate below is the part that still applies: every request must go
+# to SIGC's own origin, via relative URLs, and nowhere else.
+"$ROOT/scripts/check-network.sh" --staged
+
+# Re-prove the gate itself whenever it (or its self-test) changes.
+if ! git diff --cached --no-ext-diff --quiet -- scripts/check-network.sh scripts/test-network-gate.sh; then
+  "$ROOT/scripts/test-network-gate.sh"
+fi
+
+# Auto-bump the patch version whenever extension/ changes, unless this
+# commit already edits manifest.json's version itself (manual minor/major
+# bump takes precedence — don't double-bump).
+MANIFEST="$ROOT/extension/manifest.json"
+if ! git diff --cached --no-ext-diff --quiet -- extension/ \
+   && ! git diff --cached --no-ext-diff -- "$MANIFEST" | grep -q '"version"'; then
+  CURRENT=$(grep '"version"' "$MANIFEST" | sed -E 's/.*"version": *"([0-9]+)\.([0-9]+)\.([0-9]+)".*/\1 \2 \3/')
+  read -r MAJOR MINOR PATCH <<EOF
+$CURRENT
+EOF
+  NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+  sed -i '' -E "s/\"version\": *\"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$NEW\"/" "$MANIFEST"
+  git add "$MANIFEST"
+  echo "extension/manifest.json version bumped to $NEW"
+fi
+
+# Keep dist/munic-pro-extension.zip in sync: rebuild from the staged content
+# whenever the commit touches extension/, and include it in the same commit.
+if ! git diff --cached --no-ext-diff --quiet -- extension/; then
+  mkdir -p "$ROOT/dist"
+  TREE=$(git write-tree)
+  git archive --format=zip -o "$ROOT/dist/munic-pro-extension.zip" "$TREE" extension
+  git add "$ROOT/dist/munic-pro-extension.zip"
+  echo "dist/munic-pro-extension.zip rebuilt from staged extension/"
+fi
