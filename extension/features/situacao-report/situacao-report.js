@@ -454,6 +454,22 @@
     });
   }
 
+  // A row with no id_uf predates multi-UF support: it was written when the
+  // store held one UF's history and nothing else, so it can only belong to
+  // whichever UF collected it. Treating it as "not this UF" silently
+  // discarded every legacy row — the panel rendered partial data and the
+  // group tabs collapsed to a single line, which is how this was found.
+  //
+  // Keeping them means a national user could see another UF's legacy rows
+  // once; strictly better than losing history, and it self-corrects as
+  // those keys are rewritten with id_uf on the next fetch.
+  function filtrarLinhasPorUf(rows, idUf) {
+    if (Number.isNaN(idUf)) return rows;
+    return rows.filter((r) => r.id_uf === undefined
+      || r.id_uf === null
+      || r.id_uf === idUf);
+  }
+
   function buildPanel(data) {
     const panel = el('div', { class: 'munic-pro-panel' });
     panel.appendChild(el('style', { text: STYLE }));
@@ -642,8 +658,17 @@
       const ufSelecionada = fetchInternals && fetchInternals.readUf
         ? fetchInternals.readUf() : '';
       const idUfAtual = ufSelecionada === '' ? NaN : Number(ufSelecionada);
-      const filtrarPorUf = (rows) => (Number.isNaN(idUfAtual)
-        ? rows : rows.filter((r) => r.id_uf === idUfAtual));
+      // A row with no id_uf predates multi-UF support: it was written when
+      // the store held one UF's history and nothing else, so it can only
+      // belong to whichever UF collected it. Treating it as "not this UF"
+      // silently discarded every legacy row — the panel then rendered
+      // partial data and the group tabs collapsed to a single line.
+      //
+      // Keeping them means a national user could see another UF's legacy
+      // rows once; that is strictly better than losing the history, and it
+      // self-corrects as those keys are rewritten with id_uf on the next
+      // fetch.
+      const filtrarPorUf = (rows) => filtrarLinhasPorUf(rows, idUfAtual);
 
       const allRows = filtrarPorUf(await STORE.getAll());
       const runs = filtrarPorUf(await STORE.getRuns());
@@ -720,6 +745,7 @@
   window.__municProSituacaoReportInternals = {
     onSituacaoPage,
     buildActions,
+    filtrarLinhasPorUf,
     reapplyPaneVisibility,
     indicadorLabel,
     showPane,
