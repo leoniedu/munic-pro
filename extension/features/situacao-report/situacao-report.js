@@ -349,6 +349,25 @@
     });
   }
 
+  // Shows or hides a tab's table.
+  //
+  // Must toggle the DataTables WRAPPER when there is one, not the <table>:
+  // DataTables moves the table inside a div.dataTables_wrapper that also
+  // holds the length selector, the search box and the pagination. Hiding
+  // only the table leaves that furniture on screen, so every tab's controls
+  // stack up at once — which is exactly what the live page showed, three
+  // sets of "linhas por página / Filtrar" with different record counts.
+  //
+  // Falls back to the table itself before initialisation, or when
+  // DataTables is absent entirely.
+  function paneRoot(pane) {
+    return pane.closest('.dataTables_wrapper') || pane;
+  }
+
+  function showPane(pane, visible) {
+    paneRoot(pane).style.display = visible ? '' : 'none';
+  }
+
   function buildPanel(data) {
     const panel = el('div', { class: 'munic-pro-panel' });
     panel.appendChild(el('style', { text: STYLE }));
@@ -384,13 +403,13 @@
       b.addEventListener('click', () => {
         buttons.forEach((other, j) => {
           other.setAttribute('aria-selected', i === j ? 'true' : 'false');
-          panes[j].style.display = i === j ? '' : 'none';
+          showPane(panes[j], i === j);
         });
       });
       return b;
     });
 
-    panes.forEach((p, i) => { p.style.display = i === 0 ? '' : 'none'; });
+    panes.forEach((p, i) => { showPane(p, i === 0); });
 
     panel.appendChild(el('div', { class: 'munic-pro-tabs' }, buttons));
     for (const p of panes) panel.appendChild(p);
@@ -522,6 +541,8 @@
   window.__municProSituacaoReportInternals = {
     onSituacaoPage,
     buildActions,
+    showPane,
+    paneRoot,
     makeButton,
     situacaoClass,
     renderMunicipioTab,

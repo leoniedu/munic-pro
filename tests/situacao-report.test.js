@@ -791,3 +791,55 @@ describe('Relatório end-to-end with jQuery absent', () => {
     expect(panel.querySelector('.sigc-pro-filtro-row, [class*="filtro-row"]')).toBeNull();
   });
 });
+
+describe('tab switching with DataTables wrappers', () => {
+  // Reproduces the live failure: DataTables moves each table inside a
+  // div.dataTables_wrapper that also holds the length selector, the search
+  // box and the pagination. Hiding only the <table> leaves that furniture
+  // visible, so every tab's controls stack — the page showed three sets of
+  // "linhas por página / Filtrar" at once, with different record counts.
+  function wrap(table) {
+    const w = document.createElement('div');
+    w.className = 'dataTables_wrapper';
+    const controls = document.createElement('div');
+    controls.className = 'dataTables_length';
+    table.parentElement.insertBefore(w, table);
+    w.appendChild(controls);
+    w.appendChild(table);
+    return w;
+  }
+
+  test('paneRoot resolves to the wrapper once DataTables has wrapped it', () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const t = document.createElement('table');
+    document.getElementById('host').appendChild(t);
+    expect(R.paneRoot(t)).toBe(t);          // before init
+    const w = wrap(t);
+    expect(R.paneRoot(t)).toBe(w);          // after init
+  });
+
+  test('hiding a pane hides its controls, not just the table', () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const t = document.createElement('table');
+    document.getElementById('host').appendChild(t);
+    const w = wrap(t);
+
+    R.showPane(t, false);
+    expect(w.style.display).toBe('none');
+    // The bug: the wrapper stayed visible, so its length selector and
+    // search box remained on screen while the table beside them vanished.
+    expect(w.querySelector('.dataTables_length').closest('.dataTables_wrapper')
+      .style.display).toBe('none');
+
+    R.showPane(t, true);
+    expect(w.style.display).toBe('');
+  });
+
+  test('still works when DataTables never ran', () => {
+    document.body.innerHTML = '<div id="host"></div>';
+    const t = document.createElement('table');
+    document.getElementById('host').appendChild(t);
+    R.showPane(t, false);
+    expect(t.style.display).toBe('none');
+  });
+});
