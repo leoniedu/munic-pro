@@ -142,12 +142,19 @@
     return `${(p * 100).toFixed(1).replace('.', ',')}%`;
   }
 
+  // Just the date the reading was taken, dd/mm/yyyy. The ISO week used to
+  // lead the header, but the week number is machinery — what a reader
+  // wants is when the column was measured.
+  //
+  // A week with no run has no date to show, so it keeps the week number:
+  // it is the only thing identifying WHICH gap this is, and the gap has to
+  // stay visible rather than being silently closed up.
   function fmtColumnHeader(col) {
     if (col.run_ts === null) return `${col.week}\n— sem coleta —`;
     const d = new Date(col.run_ts);
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
-    return `${col.week}\n(${dd}/${mm})`;
+    return `${dd}/${mm}/${d.getFullYear()}`;
   }
 
   // Display labels for the Indicador column. The internal names stay as

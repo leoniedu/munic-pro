@@ -161,7 +161,9 @@ describe('renderMunicipioTab', () => {
   test('column headers carry the week and the run date', () => {
     const el = R.renderMunicipioTab(grid, columns);
     const ths = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
-    expect(ths.some((t) => t.includes('2026-W37') && t.includes('07/09'))).toBe(true);
+    // The date the reading was taken, dd/mm/yyyy — the ISO week is
+    // machinery, and a reader wants to know WHEN the column was measured.
+    expect(ths.some((t) => t.includes('07/09/2026'))).toBe(true);
   });
 
   test('a week with no run is labelled as such', () => {
@@ -229,8 +231,8 @@ describe('renderGroupTab', () => {
   test('has one column per date, after group and situação', () => {
     const el = R.renderGroupTab(counts, columns, R.fmtCount);
     const ths = [...el.querySelectorAll('thead th')].map((t) => t.textContent);
-    expect(ths.some((t) => t.includes('2026-W37'))).toBe(true);
-    expect(ths.some((t) => t.includes('2026-W39'))).toBe(true);
+    expect(ths.some((t) => t.includes('07/09/2026'))).toBe(true);
+    expect(ths.some((t) => t.includes('21/09/2026'))).toBe(true);
   });
 
   // This is the test that would fail against a per-snapshot
@@ -1127,5 +1129,33 @@ describe('Indicador column labels', () => {
     const el = R.renderMunicipioTab(
       [line], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
     expect(el.querySelector('.munic-pro-concluido')).toBeTruthy();
+  });
+});
+
+describe('column headers show the measurement date', () => {
+  test('a run column shows dd/mm/yyyy and no week number', () => {
+    const el = R.renderMunicipioTab(
+      [], [{ week: '2026-W39', run_ts: '2026-09-21T09:00:00' }]);
+    const th = [...el.querySelectorAll('thead th')].pop();
+    expect(th.textContent).toBe('21/09/2026');
+    expect(th.textContent).not.toContain('W39');
+  });
+
+  // A week with no run has no date to show, so it keeps the week number —
+  // it is the only thing identifying WHICH gap this is, and the gap must
+  // stay visible rather than being silently closed up.
+  test('an empty week still names itself and says there was no run', () => {
+    const el = R.renderMunicipioTab(
+      [], [{ week: '2026-W38', run_ts: null }]);
+    const th = [...el.querySelectorAll('thead th')].pop();
+    expect(th.textContent).toContain('2026-W38');
+    expect(th.textContent).toContain('sem coleta');
+  });
+
+  test('the year is shown, so December and January do not collide', () => {
+    const el = R.renderMunicipioTab(
+      [], [{ week: '2027-W01', run_ts: '2027-01-04T09:00:00' }]);
+    expect([...el.querySelectorAll('thead th')].pop().textContent)
+      .toBe('04/01/2027');
   });
 });
