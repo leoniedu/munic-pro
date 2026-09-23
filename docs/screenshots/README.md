@@ -24,3 +24,14 @@ Nenhuma pode ser gerada daqui — precisa da página real, autenticada.
 A captura vai para uma listagem pública. Município, agência e situação de
 coleta não são dados pessoais, mas confira que não há nome de pessoa nem
 nada de identificável no enquadramento antes de enviar.
+
+## Já capturada
+
+`painel-agencia-pct-1280x800.png` — aba Agência %, com a linha de botões,
+as cinco abas, a coluna de data e as situações coloridas. O nome do
+usuário no cabeçalho do SIGC foi tapado, e o dock do macOS recortado:
+a listagem é pública.
+
+Falta ainda, se quiser uma segunda imagem: a aba **Município**, que é a
+que mostra para que serve a extensão — uma linha por município,
+questionário e indicador, com uma coluna por leitura.
