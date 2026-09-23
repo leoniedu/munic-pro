@@ -563,16 +563,24 @@
     // here to match the 2025 workbook's five sheets, in the same order:
     // município grid, then assistência counts + percentages, then
     // agência counts + percentages.
-    const tabNames = [
-      'Município', 'Assistência', 'Assistência %', 'Agência', 'Agência %',
+    //
+    // The Assistência pair is left out when porAssistencia is null — a UF
+    // with no agência in the (Bahia-only) lookup, where every group would
+    // be "(sem assistência) <agência>", a copy of the Agência tabs.
+    const tabs = [
+      ['Município', () => renderMunicipioTab(data.grid, data.columns)],
+      ...(data.porAssistencia ? [
+        ['Assistência', () => renderGroupTab(
+          data.porAssistencia, data.columns, fmtCount)],
+        ['Assistência %', () => renderGroupTab(
+          data.porAssistenciaPct, data.columns, fmtPct, 'pctCells')],
+      ] : []),
+      ['Agência', () => renderGroupTab(data.porAgencia, data.columns, fmtCount)],
+      ['Agência %', () => renderGroupTab(
+        data.porAgenciaPct, data.columns, fmtPct, 'pctCells')],
     ];
-    const panes = [
-      renderMunicipioTab(data.grid, data.columns),
-      renderGroupTab(data.porAssistencia, data.columns, fmtCount),
-      renderGroupTab(data.porAssistenciaPct, data.columns, fmtPct, 'pctCells'),
-      renderGroupTab(data.porAgencia, data.columns, fmtCount),
-      renderGroupTab(data.porAgenciaPct, data.columns, fmtPct, 'pctCells'),
-    ];
+    const tabNames = tabs.map(([name]) => name);
+    const panes = tabs.map(([, render]) => render());
 
     const buttons = tabNames.map((name, i) => {
       const b = el('button', { type: 'button', text: name });
@@ -750,7 +758,10 @@
       const current = AGG.situacaoAsOf(allRows, runs[runs.length - 1].run_ts);
       // assistencia_nome is not a stored field — it is derived from the
       // agência code through the vendored lookup.
-      const { assistenciaDe } = window.__municProAssistencias;
+      const { assistenciaDe, ASSISTENCIA_POR_AGENCIA } =
+        window.__municProAssistencias;
+      const temAssistencia = allRows.some((r) =>
+        ASSISTENCIA_POR_AGENCIA[String(r.agencia_codigo)]);
       // Signature is (allRows, groupFields, columns) — argument order
       // matters and a wrong one silently yields empty group labels.
       //
@@ -761,8 +772,10 @@
         ...r,
         assistencia_nome: assistenciaDe(r.agencia_codigo, r.agencia_nome),
       }));
-      const porAssistencia = AGG.groupCountsByColumn(
-        rowsComAssistencia, ['assistencia_nome'], columns);
+      const porAssistencia = temAssistencia
+        ? AGG.groupCountsByColumn(
+          rowsComAssistencia, ['assistencia_nome'], columns)
+        : null;
       const porAgencia = AGG.groupCountsByColumn(
         allRows, ['agencia_nome'], columns);
 

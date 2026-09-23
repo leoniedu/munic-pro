@@ -292,6 +292,16 @@ describe('buildPanel', () => {
     expect(tabs).not.toContain('Agência × Município');
   });
 
+  // Outside Bahia every group would be "(sem assistência) <agência>" — a
+  // copy of the Agência tabs — so the caller passes null and the pair goes.
+  test('drops the Assistência pair when porAssistencia is null', () => {
+    const panel = R.buildPanel({ ...data, porAssistencia: null, porAssistenciaPct: null });
+    const tabs = [...panel.querySelectorAll('[data-munic-pro-tab]')]
+      .map((t) => t.textContent.trim());
+    expect(tabs).toEqual(['Município', 'Agência', 'Agência %']);
+    expect(panel.querySelectorAll('table').length).toBe(3);
+  });
+
   test('shows warnings when present', () => {
     const panel = R.buildPanel({ ...data, warnings: ['situação nova: X'] });
     expect(panel.textContent).toContain('situação nova: X');
@@ -1460,5 +1470,44 @@ describe('horizontal scroll', () => {
       '<tbody><tr><td>A</td></tr></tbody></table></div>';
     R.initPanelTables(document.getElementById('p'));
     expect(opts.dom).toBe('lfr<"munic-pro-rolagem"t>ip');
+  });
+});
+
+describe('Relatório-PRO outside Bahia', () => {
+  const realStore = window.__municProSituacaoStore;
+  afterEach(() => { window.__municProSituacaoStore = realStore; });
+
+  async function tabsFor(agenciaCodigo) {
+    window.__municProSituacaoStore = {
+      getAll: async () => [
+        { municipio_codigo: '1', municipio_nome: 'X', agencia_nome: 'AG',
+          agencia_codigo: agenciaCodigo, questionario: 'Básico',
+          situacao: 'Concluído', from_ts: '2026-09-07T09:00:00', until_ts: null },
+      ],
+      getRuns: async () => [
+        { run_ts: '2026-09-07T09:00:00', warnings: [], n_changed: 1 },
+      ],
+    };
+    const root = document.createElement('div');
+    const grandparent = document.createElement('div');
+    const parent = document.createElement('div');
+    root.appendChild(grandparent);
+    grandparent.appendChild(parent);
+    const bar = window.__municProSituacaoReport.buildActions();
+    parent.appendChild(bar);
+    [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório-PRO').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return [...root.querySelectorAll('[data-munic-pro-tab]')]
+      .map((t) => t.textContent.trim());
+  }
+
+  test('no agência in the lookup: no Assistência tabs', async () => {
+    expect(await tabsFor('310620000')).toEqual(['Município', 'Agência', 'Agência %']);
+  });
+
+  test('a Bahia agência keeps them', async () => {
+    expect(await tabsFor('290070200')).toContain('Assistência %');
   });
 });
