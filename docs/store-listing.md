@@ -3,9 +3,9 @@
 ## Short description (max 132 chars)
 
 ```
-Histórico não oficial da coleta MUNIC 2026 (IBGE) por município, semana a semana — guardado só no seu navegador.
+Histórico não oficial da coleta MUNIC 2026 (IBGE) por município, ao longo do tempo — guardado só no seu navegador.
 ```
-(112 chars — limit is 132)
+(114 chars — limit is 132)
 
 ## Detailed description
 
@@ -23,7 +23,7 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
   ao próprio servidor do SIGC) — a menos que a fotografia mais recente já
   guardada tenha menos de um minuto, caso em que reaproveita o histórico
   sem consultar de novo. Guarda uma fotografia datada e abre um painel
-  com cinco abas:
+  com até cinco abas:
   - Município — uma linha por município, por questionário (Básico e
     Suplementar) e por indicador (críticas informativas, críticas
     comparativas, situação), colorida como no relatório em Excel de
@@ -79,8 +79,8 @@ Código-fonte aberto: https://github.com/leoniedu/munic-pro
 ```
 Adds unofficial tools to the SIGC MUNIC 2026 (IBGE) status report page:
 one button that fetches the current status and keeps a dated history of
-it (a five-tab panel — município, assistência, assistência %, agência,
-agência %), a CSV export of that history, and a full JSON backup of it.
+it (a panel of up to five tabs — município, assistência, assistência %,
+agência, agência %), a CSV export of that history, and a full JSON backup of it.
 It requests NO browser permissions at all, and exists strictly to
 keep that history locally and let the user save it — nothing is
 transmitted anywhere outside the SIGC server the data came from.
