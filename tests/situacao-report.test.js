@@ -1366,3 +1366,99 @@ describe('inert on pages that are not the MUNIC report', () => {
     expect(document.getElementById('munic-pro-actions')).toBeNull();
   });
 });
+
+describe('Colunas selector (hidden columns)', () => {
+  const grid = [{
+    key: '1|Básico|situacao_rec', municipio_nome: 'Alagoinhas',
+    agencia_nome: 'ALAGOINHAS', agencia_codigo: '290070100',
+    questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
+  }];
+  const data = {
+    grid,
+    columns: [{ run_ts: '2026-09-22T10:00:00' }],
+    porAssistencia: [],
+    porAssistenciaPct: [],
+    porAgencia: [],
+    porAgenciaPct: [],
+    warnings: [],
+  };
+  let saved;
+
+  beforeEach(() => {
+    saved = [];
+    window.__municProPrefs = {
+      getColunasOcultas: () => [...saved],
+      setColunasOcultas: (v) => { saved = [...v]; },
+    };
+  });
+  afterEach(() => { delete window.__municProPrefs; });
+
+  const caixa = (panel, rotulo) => [...panel.querySelectorAll('.munic-pro-colunas label')]
+    .find((l) => l.textContent.trim() === rotulo).querySelector('input');
+  const css = (panel) => panel.querySelector('.munic-pro-estilo-ocultas').textContent;
+
+  // Date headings roll over as runs come and go; a saved one would soon
+  // match nothing, so they are not offered.
+  test('offers every non-date column name once, and no dates', () => {
+    const panel = R.buildPanel(data);
+    const rotulos = [...panel.querySelectorAll('.munic-pro-colunas label')]
+      .map((l) => l.textContent.trim());
+    expect(rotulos).toEqual([
+      'Assistência', 'Agência', 'Município', 'Questionário', 'Indicador',
+      'Grupo', 'Situação',
+    ]);
+  });
+
+  test('unticking hides the column and saves the choice', () => {
+    const panel = R.buildPanel(data);
+    const input = caixa(panel, 'Agência');
+    input.checked = false;
+    input.dispatchEvent(new Event('change'));
+    expect(saved).toEqual(['Agência']);
+    // Agência is the 2nd column of the Município tab (pane 0).
+    expect(css(panel)).toContain(
+      'table[data-munic-pro-pane="0"] tr > :nth-child(2) { display: none; }');
+  });
+
+  test('a saved choice applies on the next build, and re-ticking reverses it', () => {
+    saved = ['Situação'];
+    const panel = R.buildPanel(data);
+    const input = caixa(panel, 'Situação');
+    expect(input.checked).toBe(false);
+    // Situação is the 2nd column of all four group tabs.
+    for (const i of [1, 2, 3, 4]) {
+      expect(css(panel)).toContain(`table[data-munic-pro-pane="${i}"] tr > :nth-child(2)`);
+    }
+    input.checked = true;
+    input.dispatchEvent(new Event('change'));
+    expect(saved).toEqual([]);
+    expect(css(panel)).toBe('');
+  });
+
+  test('works without the prefs module, just unsaved', () => {
+    delete window.__municProPrefs;
+    const panel = R.buildPanel(data);
+    const input = caixa(panel, 'Agência');
+    input.checked = false;
+    input.dispatchEvent(new Event('change'));
+    expect(css(panel)).toContain(':nth-child(2)');
+  });
+});
+
+describe('horizontal scroll', () => {
+  afterEach(() => { delete window.jQuery; delete window.$; });
+
+  // The portal's page does not scroll sideways, so without a scroll box of
+  // our own the date columns past the right edge were unreachable.
+  test('DataTables wraps the table alone in the scroll box', () => {
+    let opts;
+    const jq = () => ({ DataTable(o) { opts = o; return {}; } });
+    jq.fn = { dataTable: { isDataTable: () => false } };
+    window.jQuery = jq;
+    document.body.innerHTML =
+      '<div id="p"><table><thead><tr><th>Grupo</th></tr></thead>' +
+      '<tbody><tr><td>A</td></tr></tbody></table></div>';
+    R.initPanelTables(document.getElementById('p'));
+    expect(opts.dom).toBe('lfr<"munic-pro-rolagem"t>ip');
+  });
+});

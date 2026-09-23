@@ -64,6 +64,7 @@ test('the MAIN-world content script loads in dependency order', () => {
     'features/situacao-store/situacao-store.js',
     'features/situacao-fetch/situacao-parse.js',
     'features/situacao-fetch/situacao-fetch.js',
+    'features/situacao-store/situacao-prefs.js',
     'features/situacao-report/situacao-aggregate.js',
     'features/situacao-report/situacao-report.js',
     'features/situacao-export/situacao-export.js',

@@ -371,3 +371,66 @@ describe('groupCountsByColumn', () => {
     }
   });
 });
+
+describe('selecionarColunas', () => {
+  const cols = (...ts) => ts.map((run_ts) => ({ run_ts }));
+  const ts = (cs) => cs.map((c) => c.run_ts);
+
+  test('keeps only the last two runs of today', () => {
+    const c = cols('2026-09-23T08:00:00', '2026-09-23T10:00:00',
+      '2026-09-23T14:00:00');
+    expect(ts(A.selecionarColunas(c, '2026-09-23'))).toEqual([
+      '2026-09-23T10:00:00', '2026-09-23T14:00:00',
+    ]);
+  });
+
+  // "The last date before today" is the latest day that HAS a run, not
+  // literally yesterday — Friday, when today is Monday.
+  test('keeps the last run of the latest earlier day with runs', () => {
+    const c = cols('2026-09-18T08:00:00', '2026-09-18T17:00:00',
+      '2026-09-21T09:00:00');
+    expect(ts(A.selecionarColunas(c, '2026-09-21'))).toEqual([
+      '2026-09-18T17:00:00', '2026-09-21T09:00:00',
+    ]);
+  });
+
+  test('older runs thin to the last one of each ISO week', () => {
+    const c = cols(
+      '2026-09-07T09:00:00', // Mon, week of 09-07
+      '2026-09-11T09:00:00', // Fri, week of 09-07
+      '2026-09-14T09:00:00', // Mon, week of 09-14
+      '2026-09-16T09:00:00', // Wed, week of 09-14
+      '2026-09-22T09:00:00', // latest earlier day
+      '2026-09-23T09:00:00', // today
+    );
+    expect(ts(A.selecionarColunas(c, '2026-09-23'))).toEqual([
+      '2026-09-11T09:00:00', '2026-09-16T09:00:00',
+      '2026-09-22T09:00:00', '2026-09-23T09:00:00',
+    ]);
+  });
+
+  // Sunday belongs to the week that started the Monday before it, and a
+  // week straddling the new year is still one week.
+  test('weeks start on Monday, across a year boundary', () => {
+    const c = cols(
+      '2026-12-27T09:00:00', // Sun, week of 12-21
+      '2026-12-29T09:00:00', // Tue, week of 12-28
+      '2027-01-02T09:00:00', // Sat, week of 12-28
+      '2027-01-05T09:00:00', // latest earlier day
+    );
+    expect(ts(A.selecionarColunas(c, '2027-01-06'))).toEqual([
+      '2026-12-27T09:00:00', '2027-01-02T09:00:00', '2027-01-05T09:00:00',
+    ]);
+  });
+
+  test('no run today still shows the earlier ones', () => {
+    const c = cols('2026-09-14T09:00:00', '2026-09-22T09:00:00');
+    expect(ts(A.selecionarColunas(c, '2026-09-23'))).toEqual([
+      '2026-09-14T09:00:00', '2026-09-22T09:00:00',
+    ]);
+  });
+
+  test('no columns yields no columns', () => {
+    expect(A.selecionarColunas([], '2026-09-23')).toEqual([]);
+  });
+});

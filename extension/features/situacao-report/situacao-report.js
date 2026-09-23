@@ -27,8 +27,18 @@
   };
 
   const STYLE = `
-    .munic-pro-panel { font-size: 13px; margin: 12px 0; }
-    .munic-pro-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+    /* overflow-x: the fallback scroll when DataTables is absent; with it,
+       the table sits in .munic-pro-rolagem and this never triggers. */
+    .munic-pro-panel { font-size: 13px; margin: 12px 0; overflow-x: auto; }
+    /* The table's own scroll box, so the date columns are reachable — the
+       portal's page does not scroll sideways. Scrolls both ways so the
+       sticky header sticks to this box instead of to nothing. */
+    .munic-pro-rolagem { overflow: auto; max-height: 70vh; clear: both; }
+    .munic-pro-barra { display: flex; gap: 12px; align-items: flex-start;
+      margin-bottom: 8px; }
+    .munic-pro-colunas summary { cursor: pointer; padding: 4px 0; }
+    .munic-pro-colunas label { display: block; font-weight: normal; }
+    .munic-pro-tabs { display: flex; gap: 4px; }
     .munic-pro-tabs button { padding: 4px 12px; cursor: pointer; }
     .munic-pro-tabs button[aria-selected="true"] { font-weight: bold; }
     .munic-pro-panel table { border-collapse: collapse; width: 100%; }
@@ -387,6 +397,10 @@
           // DataTables reads it as part of the header and binds sorting
           // to the boxes themselves.
           orderCellsTop: true,
+          // DataTables' default layout, with the table alone wrapped in
+          // .munic-pro-rolagem: the table scrolls sideways while the
+          // length selector, filter box and pager stay in view.
+          dom: 'lfr<"munic-pro-rolagem"t>ip',
         });
         wireFiltroRow(dt, buildFiltroRow(tbl));
       } catch (err) {
@@ -454,6 +468,75 @@
     });
   }
 
+  // Date headings (fmtColumnHeader) are not offered for hiding: they roll
+  // over as runs come and go, so a saved one would soon match nothing.
+  const DATA_COLUNA = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/;
+
+  function rotulosCabecalho(tabela) {
+    return [...tabela.querySelectorAll('thead tr:first-child th')]
+      .map((th) => th.textContent);
+  }
+
+  // Hidden by CSS rather than DataTables' column().visible(): the filter
+  // row is ours, added after DataTables read the header, and nth-child
+  // hides its box together with the column's cells without DataTables
+  // having to know. Also correct on rows paged in later, and without
+  // DataTables at all.
+  function cssColunasOcultas(panelEl, ocultas) {
+    const regras = [];
+    panelEl.querySelectorAll('table').forEach((tbl, i) => {
+      tbl.setAttribute('data-munic-pro-pane', String(i));
+      rotulosCabecalho(tbl).forEach((rotulo, k) => {
+        if (!ocultas.includes(rotulo)) return;
+        regras.push(`.munic-pro-panel table[data-munic-pro-pane="${i}"] ` +
+          `tr > :nth-child(${k + 1}) { display: none; }`);
+      });
+    });
+    return regras.join('\n');
+  }
+
+  // A "Colunas" dropdown of checkboxes, one per non-date column name
+  // across every tab; unticking hides that name wherever it appears. The
+  // choice persists (situacao-prefs.js) until ticked again. Without the
+  // prefs module the dropdown still works, it just forgets on reload.
+  function buildSeletorColunas(panelEl) {
+    const PREFS = window.__municProPrefs;
+    let ocultas = PREFS ? PREFS.getColunasOcultas() : [];
+    const estilo = el('style', { class: 'munic-pro-estilo-ocultas' });
+    const aplicar = () => {
+      estilo.textContent = cssColunasOcultas(panelEl, ocultas);
+    };
+
+    const rotulos = [];
+    panelEl.querySelectorAll('table').forEach((tbl) => {
+      for (const r of rotulosCabecalho(tbl)) {
+        if (!DATA_COLUNA.test(r) && !rotulos.includes(r)) rotulos.push(r);
+      }
+    });
+
+    const caixas = rotulos.map((rotulo) => {
+      const input = el('input', { type: 'checkbox' });
+      input.checked = !ocultas.includes(rotulo);
+      input.addEventListener('change', () => {
+        ocultas = input.checked
+          ? ocultas.filter((o) => o !== rotulo)
+          : [...ocultas, rotulo];
+        if (PREFS) PREFS.setColunasOcultas(ocultas);
+        aplicar();
+      });
+      const label = el('label', {}, [input]);
+      label.appendChild(document.createTextNode(` ${rotulo}`));
+      return label;
+    });
+
+    aplicar();
+    return el('details', { class: 'munic-pro-colunas' }, [
+      el('summary', { text: 'Colunas' }),
+      ...caixas,
+      estilo,
+    ]);
+  }
+
   // Strict match: a row belongs to a UF only if its own id_uf says so.
   // Rows written before id_uf existed are no longer given the benefit of
   // the doubt — the decision is to clear that old data instead of
@@ -506,8 +589,13 @@
 
     panes.forEach((p, i) => { showPane(p, i === 0); });
 
-    panel.appendChild(el('div', { class: 'munic-pro-tabs' }, buttons));
+    const barra = el('div', { class: 'munic-pro-barra' }, [
+      el('div', { class: 'munic-pro-tabs' }, buttons),
+    ]);
+    panel.appendChild(barra);
     for (const p of panes) panel.appendChild(p);
+    // After the panes are in: the selector reads their headers.
+    barra.appendChild(buildSeletorColunas(panel));
 
     // A run that changed nothing gets no column (change #3) — without
     // this line, "the last run had no changes" would be indistinguishable
@@ -657,7 +745,8 @@
       const runs = filtrarPorUf(await STORE.getRuns());
       if (!runs.length) { say('Sem histórico ainda.'); return; }
 
-      const columns = AGG.runColumns(runs);
+      const columns = AGG.selecionarColunas(AGG.runColumns(runs),
+        window.__municPro.localTimestamp().slice(0, 10));
       const current = AGG.situacaoAsOf(allRows, runs[runs.length - 1].run_ts);
       // assistencia_nome is not a stored field — it is derived from the
       // agência code through the vendored lookup.
@@ -738,6 +827,8 @@
     renderMunicipioTab,
     renderGroupTab,
     buildPanel,
+    cssColunasOcultas,
+    buildSeletorColunas,
     actionsAnchor,
     PAGE_BUTTON_IDS,
     ANCHOR_ID,

@@ -61,6 +61,39 @@
       .map((r) => ({ run_ts: r.run_ts }));
   }
 
+  // Monday of the ISO week holding a 'YYYY-MM-DD' date, as 'YYYY-MM-DD'.
+  // Computed in UTC so the local timezone cannot shift the day.
+  function semanaDe(dia) {
+    const [y, m, d] = dia.split('-').map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d));
+    t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7));
+    return t.toISOString().slice(0, 10);
+  }
+
+  // Thins runColumns() for display: the last two runs of today, the last
+  // run of the latest earlier day that has one, and before that the last
+  // run of each ISO week. Every column is an as-of snapshot, so dropping
+  // the ones in between hides no state — only how it got there. The
+  // exports still carry every run.
+  //
+  // `hoje` is the local 'YYYY-MM-DD', passed in so tests fix the clock. A
+  // run dated after it (a skewed clock) counts as today.
+  function selecionarColunas(columns, hoje) {
+    const dia = (c) => String(c.run_ts).slice(0, 10);
+    const deHoje = columns.filter((c) => dia(c) >= hoje).slice(-2);
+    const anteriores = columns.filter((c) => dia(c) < hoje);
+    if (!anteriores.length) return deHoje;
+
+    const ultimoDia = dia(anteriores[anteriores.length - 1]);
+    // Map keeps first-insertion order; overwriting keeps each week's
+    // latest run in its chronological slot.
+    const semanais = new Map();
+    for (const c of anteriores) {
+      if (dia(c) < ultimoDia) semanais.set(semanaDe(dia(c)), c);
+    }
+    return [...semanais.values(), anteriores[anteriores.length - 1], ...deHoje];
+  }
+
   // The rows open at an instant. from_ts is inclusive and until_ts
   // exclusive, so at the exact moment of a change only the new row
   // matches — otherwise a município would appear twice in that column.
@@ -218,6 +251,7 @@
 
   window.__municProSituacaoAggregate = {
     runColumns,
+    selecionarColunas,
     situacaoAsOf,
     municipioGrid,
     groupCounts,
