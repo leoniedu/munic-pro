@@ -26,18 +26,21 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
   com cinco abas:
   - Município — uma linha por município, por questionário (Básico e
     Suplementar) e por indicador (críticas informativas, críticas
-    comparativas, situação), com uma coluna por semana ISO (a última
-    consulta de cada semana), colorida como no relatório em Excel de
-    2025 que substitui. Semanas sem nenhuma consulta aparecem como
-    lacunas visíveis — não são preenchidas com o valor mais próximo.
+    comparativas, situação), colorida como no relatório em Excel de
+    2025 que substitui. Cada coluna é uma leitura que trouxe mudança:
+    as duas últimas de hoje, a última do dia anterior com leitura e,
+    antes disso, a última de cada semana. As exportações trazem todas.
   - Assistência e Assistência % — os mesmos municípios agrupados por
     assistência (agrupamento fixo, embutido na extensão, para os
     municípios da Bahia: 50 agências em 6 assistências), em contagem e
-    em percentual.
+    em percentual. Em outras UFs essas duas abas não aparecem.
   - Agência e Agência % — o mesmo, agrupado por agência.
   Todas as tabelas têm ordenação, paginação, busca geral e um filtro por
   coluna, usando o jQuery/DataTables que a própria página do SIGC já
-  carrega — nada é baixado ou embutido para isso.
+  carrega — nada é baixado ou embutido para isso. A tabela rola na
+  horizontal dentro do painel, e o menu "Colunas" oculta as colunas que
+  você não usa (Assistência, Agência, Questionário…) até você mostrá-las
+  de novo.
 • CSV-PRO — exporta uma linha por município por consulta (separador
   `;`, com BOM, pronto para o Excel brasileiro).
 • Backup JSON — exporta o histórico completo guardado, como cópia de
@@ -104,7 +107,9 @@ absent from the manifest.
 
 The collection history is kept in IndexedDB, which is a *page* API,
 available to a MAIN-world content script without any declared permission.
-`chrome.storage` is not used anywhere. An earlier version declared
+The only other thing stored is the list of column names the user chose to
+hide in the panel, kept in the page's `localStorage` — also a page API,
+also no permission. `chrome.storage` is not used anywhere. An earlier version declared
 `storage` and `downloads`; neither was ever exercised — there is no
 `chrome.*` call in `extension/` — and both were removed rather than
 justified, because the justification would have been false.
