@@ -85,14 +85,16 @@ transmitted anywhere outside the SIGC server the data came from.
 
 ## Host permission justification (dashboard field)
 
-Limit: 1000 characters. Current text is 950.
+Limit: 1000 characters. Current text is 996.
 
 ```
-The extension injects a content script only on the SIGC MUNIC 2026 report page, matched by the three specific hosts it is served from — portalweb.ibge.gov.br, portalweb2.ibge.gov.br and w3sigcmunic2026.ibge.gov.br — not the whole ibge.gov.br domain. It adds a "Relatório-PRO" button that keeps a dated history of the report's own status data (the page shows only the current value and overwrites it), plus a CSV export and a JSON backup of that history.
+The content script is matched to three hosts SIGC is served from — portalweb.ibge.gov.br, portalweb2.ibge.gov.br and w3sigcmunic2026.ibge.gov.br — not the whole ibge.gov.br domain. The path is not narrowed because the F5 gateway in front of the portal rewrites URLs with a generated prefix that can change; gating on page content is more robust than matching a path.
 
-The only network call is one click-triggered POST to the SIGC server itself, same origin, in the user's existing session, fetching the current status for the whole UF (state). No other site is accessed, and there is no external resource of any kind — no CDN, no image, no font, no analytics.
+On any page other than the MUNIC report the script does nothing: it checks for four element IDs belonging to that report's own buttons, and if they are absent it builds no UI, reads nothing and opens no database.
 
-The history is kept in the browser's own IndexedDB, on the user's machine, and exported through the browser's ordinary download mechanism — neither needs a permission. Nothing is sent to the developer; no telemetry.
+On the report page it adds a button that keeps a dated history of the report's own status data — the page shows only the current value and overwrites it — plus a CSV export and a JSON backup.
+
+The only network call is one click-triggered POST to the SIGC server itself, same origin, in the user's existing session. No other site is accessed and there is no external resource of any kind: no CDN, font or analytics.
 ```
 
 ## Storage permission justification (dashboard field)

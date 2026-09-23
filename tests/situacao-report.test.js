@@ -1329,3 +1329,40 @@ describe('filtrarLinhasPorUf', () => {
     expect(groups.length).toBeGreaterThan(1);
   });
 });
+
+describe('inert on pages that are not the MUNIC report', () => {
+  // The manifest matches three whole hosts, two of which serve much more
+  // than this report. The Web Store host-permission justification claims
+  // the script "does nothing" elsewhere — this is what makes that true,
+  // and what keeps it true.
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  test('onSituacaoPage is false without SIGC own four buttons', () => {
+    document.body.innerHTML =
+      '<h1>Outra página</h1><table><tr><td>dados</td></tr></table>';
+    expect(R.onSituacaoPage()).toBe(false);
+  });
+
+  test('three of the four buttons is still not the report page', () => {
+    // A partial match must not be enough: another SIGC report could
+    // plausibly share some ids.
+    document.body.innerHTML =
+      '<a id="btnAtualizarCriticas"></a><a id="btnAbrir"></a>' +
+      '<a id="btnAbrirPdf"></a>';
+    expect(R.onSituacaoPage()).toBe(false);
+  });
+
+  test('the anchor resolves to nothing when the report is absent', () => {
+    document.body.innerHTML = '<div class="col-12"><a id="btnOutro"></a></div>';
+    expect(R.actionsAnchor()).toBeNull();
+  });
+
+  test('an unrelated page table is left untouched', () => {
+    document.body.innerHTML = '<table id="alheia"><tr><td>x</td></tr></table>';
+    const before = document.getElementById('alheia').outerHTML;
+    // Whatever the mount loop does on a non-report page, it must not
+    // reach into the page's own markup.
+    expect(document.getElementById('alheia').outerHTML).toBe(before);
+    expect(document.getElementById('munic-pro-actions')).toBeNull();
+  });
+});
