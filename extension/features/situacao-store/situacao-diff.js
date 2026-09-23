@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  if (window.__municProSituacaoDiff) return;
+  if (globalThis.__municProSituacaoDiff) return;
 
   // The fields that constitute collection state. A change in any of them
   // is a real event worth a new history row.
@@ -73,5 +73,5 @@
     return { toClose, toInsert, nChanged: toClose.length + toInsert.length };
   }
 
-  window.__municProSituacaoDiff = { diffSnapshot, rowKey, VALUE_FIELDS };
+  globalThis.__municProSituacaoDiff = { diffSnapshot, rowKey, VALUE_FIELDS };
 })();

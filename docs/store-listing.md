@@ -105,14 +105,14 @@ The only network call is one click-triggered POST to the SIGC server itself, sam
 **Not applicable — no permission is requested.** The `permissions` list is
 absent from the manifest.
 
-The collection history is kept in IndexedDB, which is a *page* API,
-available to a MAIN-world content script without any declared permission.
-The only other thing stored is the list of column names the user chose to
-hide in the panel, kept in the page's `localStorage` — also a page API,
-also no permission. `chrome.storage` is not used anywhere. An earlier version declared
-`storage` and `downloads`; neither was ever exercised — there is no
-`chrome.*` call in `extension/` — and both were removed rather than
-justified, because the justification would have been false.
+The collection history is kept in IndexedDB on the extension's own
+origin, opened by its service worker and its options page — IndexedDB
+needs no declared permission. The content script reaches the worker with
+`chrome.runtime.sendMessage`, which needs none either; it is the only
+`chrome.*` API in `extension/`. `chrome.storage` is not used anywhere. An
+earlier version declared `storage` and `downloads`; neither was ever
+exercised, and both were removed rather than justified, because the
+justification would have been false.
 
 
 ## Downloads permission justification (dashboard field)

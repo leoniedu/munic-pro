@@ -154,6 +154,16 @@
     return call('clearAll');
   }
 
+  // Display preferences (the panel's hidden columns), kept beside the
+  // history so they share its origin and its lifetime.
+  function getPref(key) {
+    return call('getPref', key);
+  }
+
+  function setPref(key, value) {
+    return call('setPref', key, value);
+  }
+
   window.__municProSituacaoStoreInternals = {
     setCallTimeoutMs: (ms) => { callTimeoutMs = ms; },
   };
@@ -164,5 +174,7 @@
     getAll,
     getRuns,
     clearAll,
+    getPref,
+    setPref,
   };
 })();

@@ -1,35 +1,25 @@
 // Storage logic for the options page.
 //
-// The options page runs as an ordinary extension page (chrome-extension://
-// origin, opened via options_ui) — the SAME origin situacao-bridge.js
-// stores the database in. Unlike the MAIN/ISOLATED content-script split,
-// there is no portal page here and no F5 rewriter to work around, so this
-// file opens indexedDB directly rather than going through the DOM-attribute
-// RPC: there is only one JS realm involved, and nothing to bridge to.
+// The options page is an extension page, on the extension's own origin —
+// the same origin situacao-worker.js (the service worker) opens the
+// history on. So both open the SAME database, through the same
+// situacao-db.js, and this file calls it directly rather than messaging
+// the worker: there is nothing to bridge to. IndexedDB serialises the two
+// as concurrent writers via its transaction model.
 //
-// This is a THIRD place that touches storage, alongside situacao-bridge.js
-// (the content-script ISOLATED-world owner). Both open the same database
-// (same name, same version, same store shapes) because they are two
-// different doors into the one history — a content-script tab and an
-// options tab, open at the same time, must see the same data. IndexedDB
-// itself serialises concurrent writers via its transaction model, so two
-// tabs racing a save and an import is safe, just not something this file
-// needs to special-case.
+// What is left here is the page's own logic: status counts, the backup
+// JSON's shape and its validation.
 //
 // This directory is storage-sanctioned by scripts/check-network.sh; the
 // options page's OWN files (extension/options/) are not, and must call
-// into this module rather than touching indexedDB themselves — the same
-// separation the content-script split already keeps between "owns the
-// database" and "renders UI".
+// into this module rather than touching indexedDB themselves.
 (function () {
   'use strict';
 
   if (window.__municProSituacaoOptionsStore) return;
 
-  const DB_NAME = 'munic-pro';
-  const DB_VERSION = 1;
-  const STORE_SITUACAO = 'situacao';
-  const STORE_RUNS = 'runs';
+  const DBMOD = window.__municProSituacaoDb;
+  const DB = DBMOD.criarDb(indexedDB);
 
   // Snapshot format version. Matches situacao-export.js's snapshotJson
   // exactly — a backup made from the panel and one made from this page
@@ -41,71 +31,9 @@
   ];
   const REQUIRED_RUN_FIELDS = ['run_ts'];
 
-  function promisify(req) {
-    return new Promise((resolve, reject) => {
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  function txDone(tx) {
-    return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
-
-  // Schema kept identical to situacao-bridge.js's openDb(): both files
-  // open the SAME database, so an upgrade path defined in only one of
-  // them would leave the other looking at a store that was never
-  // created, whichever one happens to run first on a fresh profile.
-  function openDb() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE_SITUACAO)) {
-          const s = db.createObjectStore(STORE_SITUACAO, {
-            keyPath: 'id',
-            autoIncrement: true,
-          });
-          s.createIndex('open_key', 'open_key', { unique: true });
-        }
-        if (!db.objectStoreNames.contains(STORE_RUNS)) {
-          db.createObjectStore(STORE_RUNS, { keyPath: 'run_ts' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async function getAllRows() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_SITUACAO, 'readonly');
-    const rows = await promisify(tx.objectStore(STORE_SITUACAO).getAll());
-    db.close();
-    return rows;
-  }
-
-  async function getAllRuns() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_RUNS, 'readonly');
-    const runs = await promisify(tx.objectStore(STORE_RUNS).getAll());
-    db.close();
-    return runs.sort((a, b) => String(a.run_ts).localeCompare(String(b.run_ts)));
-  }
-
-  // The natural key for a history row: what makes two rows (whether from
-  // two different imports, or an import against what is already stored)
-  // "the same fact". Deliberately excludes `id` (an autoIncrement local
-  // primary key, meaningless across databases) and `until_ts` (a row's
-  // end date can be back-filled later without it becoming a different
-  // fact) — only the fields that identify WHEN a state began.
-  function rowNaturalKey(row) {
-    return `${row.uf_sigla}|${row.municipio_codigo}|${row.questionario}|${row.from_ts}`;
-  }
+  const getAllRows = DB.getAll;
+  const getAllRuns = DB.getRuns;
+  const rowNaturalKey = DBMOD.rowNaturalKey;
 
   function runNaturalKey(run) {
     return String(run.run_ts);
@@ -204,65 +132,6 @@
     return problems;
   }
 
-  // Merges a validated snapshot into the store: rows and runs already
-  // present (matched by natural key) are skipped, so importing the same
-  // file twice is a no-op the second time. Runs in ONE readwrite
-  // transaction — a validation failure never reaches this function at
-  // all (see importSnapshotJson below), and any failure inside the
-  // transaction aborts it, so a partial import cannot commit.
-  async function mergeSnapshot(parsed) {
-    const db = await openDb();
-    const tx = db.transaction([STORE_SITUACAO, STORE_RUNS], 'readwrite');
-    const situacao = tx.objectStore(STORE_SITUACAO);
-    const runs = tx.objectStore(STORE_RUNS);
-
-    const existingRows = await promisify(situacao.getAll());
-    const existingRunTs = new Set(
-      (await promisify(runs.getAll())).map(runNaturalKey),
-    );
-    const existingRowKeys = new Set(existingRows.map(rowNaturalKey));
-
-    let rowsAdded = 0;
-    let rowsSkipped = 0;
-    for (const row of parsed.rows) {
-      const key = rowNaturalKey(row);
-      if (existingRowKeys.has(key)) {
-        rowsSkipped += 1;
-        continue;
-      }
-      existingRowKeys.add(key); // guards duplicates WITHIN the same file
-      // Drop any incoming `id` / `open_key`: `id` is a foreign
-      // autoIncrement key that must not collide with this database's own
-      // sequence, and `open_key` (the unique index used to find the
-      // currently-open row per business key) must be recomputed here
-      // rather than trusted from the file, so a future saveSnapshot()
-      // still finds exactly one open row per key.
-      const { id, open_key, ...rest } = row;
-      const toAdd = rest.until_ts === null
-        ? { ...rest, open_key: `${rest.uf_sigla}|${rest.municipio_codigo}|${rest.questionario}` }
-        : rest;
-      situacao.add(toAdd);
-      rowsAdded += 1;
-    }
-
-    let runsAdded = 0;
-    let runsSkipped = 0;
-    for (const run of parsed.runs) {
-      const key = runNaturalKey(run);
-      if (existingRunTs.has(key)) {
-        runsSkipped += 1;
-        continue;
-      }
-      existingRunTs.add(key);
-      runs.put(run);
-      runsAdded += 1;
-    }
-
-    await txDone(tx);
-    db.close();
-    return { rowsAdded, rowsSkipped, runsAdded, runsSkipped };
-  }
-
   // Public entry point: parses, validates, and only then writes. A
   // malformed file throws before mergeSnapshot ever opens a transaction,
   // so nothing is written for an invalid file — not even a partial
@@ -278,28 +147,19 @@
     if (problems.length > 0) {
       throw new Error(`arquivo de backup inválido: ${problems.join(' ')}`);
     }
-    return mergeSnapshot(parsed);
-  }
-
-  async function clearAll() {
-    const db = await openDb();
-    const tx = db.transaction([STORE_SITUACAO, STORE_RUNS], 'readwrite');
-    tx.objectStore(STORE_SITUACAO).clear();
-    tx.objectStore(STORE_RUNS).clear();
-    await txDone(tx);
-    db.close();
+    return DB.mergeSnapshot(parsed);
   }
 
   window.__municProSituacaoOptionsStore = {
     getStatus,
     exportSnapshotJson,
     importSnapshotJson,
-    clearAll,
+    clearAll: DB.clearAll,
     // Exposed for tests only.
     snapshotJson,
     validateSnapshot,
     rowNaturalKey,
     runNaturalKey,
-    openDb,
+    openDb: DB.openDb,
   };
 })();

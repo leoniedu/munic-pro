@@ -17,23 +17,19 @@
 #   - extension/features/situacao-store/  : indexedDB only, no network at all
 #   - extension/features/situacao-export/ : Blob/download only, no network
 #
-# situacao-store/ holds THREE callers' code, none of them the network:
-# situacao-bridge.js (ISOLATED-world content script, the extension's own
-# origin) and situacao-options-store.js (the options page, also the
-# extension's own origin) each open indexedDB directly, being two
-# different doors onto the SAME database; situacao-store.js (MAIN world,
-# the SIGC page's origin) is a thin request/reply client with no storage
-# API of its own, carried on a DOM attribute rather than postMessage; and
-# situacao-diff.js (pure, no I/O) is shared by the storage-owning pair.
-# The gate sanctions the whole directory rather than telling the callers
-# apart file-by-file — same tripwire as before, just now covering a third
-# file too. The options page's OWN directory (extension/options/) is
-# deliberately NOT sanctioned: its options.js must call into
-# situacao-options-store.js rather than open the database itself, the
-# same separation the content-script split already keeps between "owns
-# the database" and "renders UI". What actually keeps MAIN-world content-
-# script code and the options page's own UI code out of indexedDB is that
-# neither has a reason to call indexedDB.open() directly — checked by
+# situacao-store/ holds every piece of code that touches storage, none of
+# it the network: situacao-db.js (every IndexedDB operation), loaded by
+# situacao-worker.js (the service worker, which owns the history on the
+# extension's origin) and by situacao-options-store.js (the options page,
+# same origin, so the same database); situacao-bridge.js (ISOLATED-world
+# relay to the worker, which opens the PORTAL-origin database only to
+# migrate what earlier versions left there); situacao-store.js (MAIN-world
+# client, no storage API of its own, carried on a DOM attribute); and
+# situacao-diff.js (pure, no I/O). The gate sanctions the whole directory
+# rather than telling the files apart. The options page's OWN directory
+# (extension/options/) is deliberately NOT sanctioned: options.js must
+# call into situacao-options-store.js rather than open the database
+# itself. What keeps MAIN-world code out of indexedDB is checked by
 # source-shape tests in tests/situacao-store.test.js, not by this script.
 #
 # Also runs a repo-wide (not just extension/) check that no unlisted Chrome

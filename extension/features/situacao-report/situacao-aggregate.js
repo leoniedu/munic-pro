@@ -27,13 +27,14 @@
   // through unchanged — raw and (per situacaoClass) uncoloured — so a
   // new SIGC status is visible as itself instead of being mislabelled.
   //
-  // "Supervisão/Análise" remains a bucket the colour table knows about;
-  // nothing currently maps into it.
   const SITUACAO_BUCKET = {
     'Não Iniciado': 'Não Iniciado',
     'Dig. Informante': 'Digitação/Validação',
     'Dig. Ibge': 'Digitação/Validação',
     'Em Validação': 'Digitação/Validação',
+    // Seen live in September 2026: the first raw value observed to
+    // belong in this bucket.
+    'Em Supervisão': 'Supervisão/Análise',
     'Concluído': 'Concluído',
   };
 

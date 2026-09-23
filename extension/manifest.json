@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
   "name": "MUNIC-PRO",
-  "version": "0.1.35",
+  "version": "0.1.36",
   "description": "Acompanhamento não oficial da coleta da MUNIC (IBGE): histórico da situação por município e relatórios por agência.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "features/situacao-store/situacao-worker.js",
+    "type": "module"
   },
   "options_ui": {
     "page": "options/options.html",
@@ -21,6 +25,7 @@
       ],
       "js": [
         "features/situacao-store/situacao-diff.js",
+        "features/situacao-store/situacao-db.js",
         "features/situacao-store/situacao-bridge.js"
       ],
       "run_at": "document_start",
@@ -40,7 +45,6 @@
         "features/situacao-store/situacao-store.js",
         "features/situacao-fetch/situacao-parse.js",
         "features/situacao-fetch/situacao-fetch.js",
-        "features/situacao-store/situacao-prefs.js",
         "features/situacao-report/situacao-aggregate.js",
         "features/situacao-report/situacao-report.js",
         "features/situacao-export/situacao-export.js"

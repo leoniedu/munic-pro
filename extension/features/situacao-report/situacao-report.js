@@ -16,9 +16,6 @@
   // keyed on the four Excel buckets — not the raw digitação variants,
   // which situacaoRec() (situacao-aggregate.js) folds into
   // 'Digitação/Validação' before this table is ever consulted.
-  // 'Supervisão/Análise' is kept here even though nothing currently
-  // produces it: it was a real bucket in the 2025 vocabulary, just one
-  // no observed raw situação mapped to.
   const SITUACAO_CLASS = {
     'Não Iniciado': 'munic-pro-nao-iniciado',
     'Digitação/Validação': 'munic-pro-digitacao',
@@ -29,7 +26,15 @@
   const STYLE = `
     /* overflow-x: the fallback scroll when DataTables is absent; with it,
        the table sits in .munic-pro-rolagem and this never triggers. */
-    .munic-pro-panel { font-size: 13px; margin: 12px 0; overflow-x: auto; }
+    /* Full window width: the portal centres its content in a narrow
+       column, which left most date columns behind the scroll. The margin
+       pulls the panel from that centred column out to 16px from the
+       window's edges, whatever the column's width. */
+    .munic-pro-panel {
+      font-size: 13px; overflow-x: auto; box-sizing: border-box;
+      width: calc(100vw - 32px);
+      margin: 12px 0 12px calc(50% - 50vw + 16px);
+    }
     /* The table's own scroll box, so the date columns are reachable — the
        portal's page does not scroll sideways. Scrolls both ways so the
        sticky header sticks to this box instead of to nothing. */
@@ -496,12 +501,11 @@
   }
 
   // A "Colunas" dropdown of checkboxes, one per non-date column name
-  // across every tab; unticking hides that name wherever it appears. The
-  // choice persists (situacao-prefs.js) until ticked again. Without the
-  // prefs module the dropdown still works, it just forgets on reload.
-  function buildSeletorColunas(panelEl) {
-    const PREFS = window.__municProPrefs;
-    let ocultas = PREFS ? PREFS.getColunasOcultas() : [];
+  // across every tab; unticking hides that name wherever it appears.
+  // `salvar` persists each change (the caller stores it beside the
+  // history); without one the dropdown still works, it just forgets.
+  function buildSeletorColunas(panelEl, ocultasIniciais, salvar) {
+    let ocultas = [...(ocultasIniciais || [])];
     const estilo = el('style', { class: 'munic-pro-estilo-ocultas' });
     const aplicar = () => {
       estilo.textContent = cssColunasOcultas(panelEl, ocultas);
@@ -521,7 +525,7 @@
         ocultas = input.checked
           ? ocultas.filter((o) => o !== rotulo)
           : [...ocultas, rotulo];
-        if (PREFS) PREFS.setColunasOcultas(ocultas);
+        if (salvar) salvar(ocultas);
         aplicar();
       });
       const label = el('label', {}, [input]);
@@ -603,7 +607,8 @@
     panel.appendChild(barra);
     for (const p of panes) panel.appendChild(p);
     // After the panes are in: the selector reads their headers.
-    barra.appendChild(buildSeletorColunas(panel));
+    barra.appendChild(buildSeletorColunas(
+      panel, data.colunasOcultas, data.salvarColunasOcultas));
 
     // A run that changed nothing gets no column (change #3) — without
     // this line, "the last run had no changes" would be indistinguishable
@@ -779,6 +784,15 @@
       const porAgencia = AGG.groupCountsByColumn(
         allRows, ['agencia_nome'], columns);
 
+      // A failed read shows every column rather than no panel.
+      const PREF_OCULTAS = 'colunas-ocultas';
+      let colunasOcultas = [];
+      try {
+        colunasOcultas = (await STORE.getPref(PREF_OCULTAS)) || [];
+      } catch (err) {
+        console.warn(`${TAG} colunas ocultas indisponíveis:`, err);
+      }
+
       const panel = buildPanel({
         grid: AGG.municipioGrid(allRows, columns),
         columns,
@@ -789,6 +803,9 @@
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
         lastRunChanged: (runs[runs.length - 1].n_changed || 0) > 0,
+        colunasOcultas,
+        salvarColunasOcultas: (v) => STORE.setPref(PREF_OCULTAS, v)
+          .catch((err) => console.warn(`${TAG} não foi possível salvar:`, err)),
       });
 
       const card = bar.closest('.card') || bar.parentElement.parentElement;

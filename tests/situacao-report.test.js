@@ -1393,15 +1393,11 @@ describe('Colunas selector (hidden columns)', () => {
     warnings: [],
   };
   let saved;
-
-  beforeEach(() => {
-    saved = [];
-    window.__municProPrefs = {
-      getColunasOcultas: () => [...saved],
-      setColunasOcultas: (v) => { saved = [...v]; },
-    };
+  const build = (ocultas) => R.buildPanel({
+    ...data, colunasOcultas: ocultas, salvarColunasOcultas: (v) => { saved = [...v]; },
   });
-  afterEach(() => { delete window.__municProPrefs; });
+
+  beforeEach(() => { saved = undefined; });
 
   const caixa = (panel, rotulo) => [...panel.querySelectorAll('.munic-pro-colunas label')]
     .find((l) => l.textContent.trim() === rotulo).querySelector('input');
@@ -1410,7 +1406,7 @@ describe('Colunas selector (hidden columns)', () => {
   // Date headings roll over as runs come and go; a saved one would soon
   // match nothing, so they are not offered.
   test('offers every non-date column name once, and no dates', () => {
-    const panel = R.buildPanel(data);
+    const panel = build([]);
     const rotulos = [...panel.querySelectorAll('.munic-pro-colunas label')]
       .map((l) => l.textContent.trim());
     expect(rotulos).toEqual([
@@ -1420,7 +1416,7 @@ describe('Colunas selector (hidden columns)', () => {
   });
 
   test('unticking hides the column and saves the choice', () => {
-    const panel = R.buildPanel(data);
+    const panel = build([]);
     const input = caixa(panel, 'Agência');
     input.checked = false;
     input.dispatchEvent(new Event('change'));
@@ -1431,8 +1427,7 @@ describe('Colunas selector (hidden columns)', () => {
   });
 
   test('a saved choice applies on the next build, and re-ticking reverses it', () => {
-    saved = ['Situação'];
-    const panel = R.buildPanel(data);
+    const panel = build(['Situação']);
     const input = caixa(panel, 'Situação');
     expect(input.checked).toBe(false);
     // Situação is the 2nd column of all four group tabs.
@@ -1445,8 +1440,7 @@ describe('Colunas selector (hidden columns)', () => {
     expect(css(panel)).toBe('');
   });
 
-  test('works without the prefs module, just unsaved', () => {
-    delete window.__municProPrefs;
+  test('works with nothing to save to, just unsaved', () => {
     const panel = R.buildPanel(data);
     const input = caixa(panel, 'Agência');
     input.checked = false;

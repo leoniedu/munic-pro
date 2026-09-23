@@ -20,13 +20,28 @@ test('manifest requests no permissions at all', () => {
   expect(manifest.host_permissions).toBeUndefined();
 });
 
-test('no chrome.* API is called, which is what makes that possible', () => {
+// The one exception is chrome.runtime messaging, between the bridge and
+// the service worker that owns the history: it needs no permission. Any
+// other chrome.* API is still a failure here.
+test('no chrome.* API beyond runtime messaging, which is what makes that possible', () => {
   const { execSync } = require('node:child_process');
   const hits = execSync(
     "grep -rn 'chrome\\.[a-z]' extension/ --include=*.js | grep -v '^\\s*//' || true",
     { encoding: 'utf8' },
-  ).split('\n').filter((l) => l && !/\/\/.*chrome\./.test(l));
+  ).split('\n').filter((l) => l && !/\/\/.*chrome\./.test(l))
+    .filter((l) => !/chrome\.runtime\.(sendMessage|onMessage\.addListener|lastError)\b/.test(l));
   expect(hits).toEqual([]);
+});
+
+// The worker is what puts the history on the extension's own origin —
+// the only one the options page and every portal host share.
+test('the history is owned by a module service worker', () => {
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8'));
+  expect(manifest.background).toEqual({
+    service_worker: 'features/situacao-store/situacao-worker.js',
+    type: 'module',
+  });
+  expect(existsSync(`extension/${manifest.background.service_worker}`)).toBe(true);
 });
 
 test('manifest targets the MUNIC 2026 hosts', () => {
@@ -38,7 +53,7 @@ test('manifest targets the MUNIC 2026 hosts', () => {
 });
 
 // Two content_scripts entries now share these matches: an ISOLATED-world
-// one (the extension's own origin, owns IndexedDB) and the original
+// one (relays to the service worker that owns IndexedDB) and the original
 // MAIN-world one (the page's own jQuery/DataTables and session). Each
 // file reads its dependencies off window at load time, so a wrong order
 // is a TypeError at page load — in the browser, where nobody is
@@ -49,6 +64,7 @@ test('the ISOLATED-world content script loads in dependency order', () => {
   expect(isolated).toBeTruthy();
   expect(isolated.js).toEqual([
     'features/situacao-store/situacao-diff.js',
+    'features/situacao-store/situacao-db.js',
     'features/situacao-store/situacao-bridge.js',
   ]);
 });
@@ -64,7 +80,6 @@ test('the MAIN-world content script loads in dependency order', () => {
     'features/situacao-store/situacao-store.js',
     'features/situacao-fetch/situacao-parse.js',
     'features/situacao-fetch/situacao-fetch.js',
-    'features/situacao-store/situacao-prefs.js',
     'features/situacao-report/situacao-aggregate.js',
     'features/situacao-report/situacao-report.js',
     'features/situacao-export/situacao-export.js',

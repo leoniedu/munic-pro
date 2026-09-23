@@ -1,10 +1,10 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
 
-// This module opens the SAME database as situacao-bridge.js (the
-// content-script ISOLATED-world owner), but from a different door: the
-// options page's own extension-origin tab. fake-indexeddb (tests/setup.js)
+// This module opens the SAME database as situacao-worker.js (the service
+// worker), both on the extension's origin, through situacao-db.js. fake-indexeddb (tests/setup.js)
 // backs both, so this suite hits real transactions and index lookups, the
 // same as tests/situacao-store.test.js.
+await import('../extension/features/situacao-store/situacao-db.js');
 await import('../extension/features/situacao-store/situacao-options-store.js');
 
 const OS = window.__municProSituacaoOptionsStore;
@@ -304,36 +304,40 @@ describe('clearAll', () => {
 });
 
 describe('importSnapshotJson: conflicting open rows', () => {
-  // Two machines could each keep their OWN open row for the same key with
-  // different from_ts (e.g. a município's state changed after the last
-  // shared backup). Both are legitimately different facts (different
-  // natural key, since from_ts differs), but IndexedDB's open_key index
-  // is unique per business key — inserting a second "currently open" row
-  // for the same município/questionário without closing the first would
-  // violate that constraint. This documents the current behaviour rather
-  // than asserting a specific fix, so a future change to how this is
-  // handled shows up here.
-  test('importing a second open row for an already-open key does not silently corrupt the store', async () => {
+  // Two machines (or two portal hosts) can each hold an OPEN row for the
+  // same município/questionário, begun at different times. Only one can
+  // stay open — the later one — and the other closes when it began.
+  test('an incoming later open row closes the stored one', async () => {
     await seed(
       [row('2900702', 'Básico', 'Não Iniciado', { from_ts: TS1, until_ts: null })],
       [run(TS1)],
     );
-    const snapshot = OS.snapshotJson(
+    await OS.importSnapshotJson(OS.snapshotJson(
+      [row('2900702', 'Básico', 'Concluído', { from_ts: TS2, until_ts: null })],
+      [run(TS2)],
+    ));
+    const db = window.__municProSituacaoDb.criarDb(indexedDB);
+    const all = await db.getAll();
+    expect(all.length).toBe(2);
+    const antiga = all.find((r) => r.from_ts === TS1);
+    expect(antiga.until_ts).toBe(TS2);
+    expect(antiga.open_key).toBeUndefined();
+    const current = await db.getCurrent();
+    expect(current.map((r) => r.situacao)).toEqual(['Concluído']);
+  });
+
+  test('an incoming earlier open row is stored closed', async () => {
+    await seed(
       [row('2900702', 'Básico', 'Concluído', { from_ts: TS2, until_ts: null })],
       [run(TS2)],
     );
-    try {
-      await OS.importSnapshotJson(snapshot);
-      // If it succeeds, the store must not have silently dropped the
-      // original open row -- both facts should still be readable.
-      const status = await OS.getStatus();
-      expect(status.nRows).toBeGreaterThanOrEqual(1);
-    } catch (err) {
-      // If it throws (the constraint rejects it), the transaction must
-      // not have partially committed.
-      const status = await OS.getStatus();
-      expect(status.nRows).toBe(1);
-      expect(status.nRuns).toBe(1);
-    }
+    await OS.importSnapshotJson(OS.snapshotJson(
+      [row('2900702', 'Básico', 'Não Iniciado', { from_ts: TS1, until_ts: null })],
+      [run(TS1)],
+    ));
+    const db = window.__municProSituacaoDb.criarDb(indexedDB);
+    const antiga = (await db.getAll()).find((r) => r.from_ts === TS1);
+    expect(antiga.until_ts).toBe(TS2);
+    expect((await db.getCurrent()).map((r) => r.situacao)).toEqual(['Concluído']);
   });
 });

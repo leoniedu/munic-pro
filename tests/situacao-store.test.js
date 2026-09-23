@@ -16,8 +16,19 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 // happy-dom (tests/setup.js) implements both MutationObserver and
 // dataset, which is what makes this end-to-end path testable at all
 // without a real browser.
+import { IDBFactory } from 'fake-indexeddb';
+
 await import('../extension/features/situacao-store/situacao-diff.js');
+await import('../extension/features/situacao-store/situacao-db.js');
+// The worker binds the global indexedDB — here, the "extension origin".
+await import('../extension/features/situacao-store/situacao-worker.js');
+// The bridge sees the PORTAL's origin: a separate factory, as in Chrome,
+// where content scripts get the page's IndexedDB, not the extension's.
+const extensaoIdb = globalThis.indexedDB;
+const portalIdb = new IDBFactory();
+globalThis.indexedDB = portalIdb;
 await import('../extension/features/situacao-store/situacao-bridge.js');
+globalThis.indexedDB = extensaoIdb;
 await import('../extension/features/situacao-store/situacao-store.js');
 
 const S = window.__municProSituacaoStore;
@@ -328,4 +339,110 @@ describe('cross-origin storage: MAIN never touches indexedDB directly', () => {
       el.setAttribute = originalSetAttribute;
     }
   }, 15000);
+});
+
+describe('service worker ownership', () => {
+  const B = window.__municProSituacaoBridge;
+
+  // The bug this layout fixes: content scripts get the PORTAL's
+  // IndexedDB. Saves through the bridge must land in the extension-origin
+  // database (the worker's), never in the portal's.
+  test('a save lands in the extension-origin database, not the portal one', async () => {
+    await S.saveSnapshot([row('2900702', 'Básico', 'X')], TS1, []);
+    const { criarDb } = globalThis.__municProSituacaoDb;
+    expect((await criarDb(extensaoIdb).getAll()).length).toBe(1);
+    const nomes = (await portalIdb.databases()).map((d) => d.name);
+    expect(nomes).not.toContain('munic-pro');
+  });
+
+  test('the page cannot call mergeSnapshot through the bridge', () => {
+    expect(B.mergeSnapshot).toBeUndefined();
+  });
+
+  test('the worker answers an unknown method with an error', () => {
+    let resp;
+    globalThis.__municProSituacaoWorker.handleMessage(
+      { municPro: 'db', method: 'nope', args: [] }, {}, (r) => { resp = r; });
+    expect(resp.error).toContain('nope');
+  });
+
+  test('ignores messages that are not its own', () => {
+    expect(globalThis.__municProSituacaoWorker.handleMessage(
+      { other: true }, {}, () => {})).toBe(false);
+  });
+});
+
+describe('prefs', () => {
+  test('round-trip through the bridge', async () => {
+    await S.setPref('colunas-ocultas', ['Agência']);
+    expect(await S.getPref('colunas-ocultas')).toEqual(['Agência']);
+  });
+
+  test('an unset pref reads as null', async () => {
+    expect(await S.getPref('nunca-salva')).toBeNull();
+  });
+
+  // Clearing the history must not forget which columns were hidden.
+  test('clearAll keeps prefs', async () => {
+    await S.setPref('colunas-ocultas', ['Agência']);
+    await S.clearAll();
+    expect(await S.getPref('colunas-ocultas')).toEqual(['Agência']);
+  });
+});
+
+describe('migrarLegado: history left on the portal origin', () => {
+  const B = window.__municProSituacaoBridge;
+  const { criarDb } = globalThis.__municProSituacaoDb;
+
+  async function legadoCom(snapshots) {
+    const f = new IDBFactory();
+    const legado = criarDb(f);
+    for (const [rows, ts] of snapshots) await legado.saveSnapshot(rows, ts, []);
+    return f;
+  }
+
+  test('moves the rows and runs over, then deletes the old database', async () => {
+    const f = await legadoCom([
+      [[row('2900702', 'Básico', 'Não Iniciado')], TS1],
+      [[row('2900702', 'Básico', 'Concluído')], TS2],
+    ]);
+    const res = await B.migrarLegado(f);
+    expect(res.migrated).toBe(true);
+    expect((await S.getAll()).length).toBe(2);
+    expect((await S.getRuns()).map((r) => r.run_ts)).toEqual([TS1, TS2]);
+    expect((await S.getCurrent())[0].situacao).toBe('Concluído');
+    expect((await f.databases()).map((d) => d.name)).not.toContain('munic-pro');
+  });
+
+  test('nothing there: nothing to do, and no database created', async () => {
+    const f = new IDBFactory();
+    expect((await B.migrarLegado(f)).migrated).toBe(false);
+    expect(await f.databases()).toEqual([]);
+  });
+
+  // A second portal host migrating into a history the first already
+  // filled: same município open in both, begun at different times.
+  test('a second host merges without failing on shared open rows', async () => {
+    await S.saveSnapshot([row('2900702', 'Básico', 'Não Iniciado')], TS1, []);
+    const f = await legadoCom([[[row('2900702', 'Básico', 'Concluído')], TS2]]);
+    await B.migrarLegado(f);
+    const current = await S.getCurrent();
+    expect(current.length).toBe(1);
+    expect(current[0].situacao).toBe('Concluído');
+    expect((await S.getAll()).length).toBe(2);
+  });
+
+  // The old copy is the only one until the merge has committed.
+  test('a failed merge leaves the old database in place', async () => {
+    const f = await legadoCom([[[row('2900702', 'Básico', 'X')], TS1]]);
+    const real = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = (msg, cb) => setTimeout(() => cb({ error: 'falhou' }), 0);
+    try {
+      await expect(B.migrarLegado(f)).rejects.toThrow('falhou');
+    } finally {
+      chrome.runtime.sendMessage = real;
+    }
+    expect((await f.databases()).map((d) => d.name)).toContain('munic-pro');
+    expect((await criarDb(f).getAll()).length).toBe(1);
+  });
 });

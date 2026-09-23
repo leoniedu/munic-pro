@@ -39,6 +39,8 @@
     'Dig. Informante',
     'Dig. Ibge',
     'Em Validação',
+    // First seen live in September 2026.
+    'Em Supervisão',
     'Concluído',
   ]);
 

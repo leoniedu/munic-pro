@@ -1,17 +1,19 @@
-// ISOLATED-world owner of the IndexedDB history.
+// ISOLATED-world relay between the page and the history database.
 //
-// The content script runs in the MAIN world (situacao-report.js reads the
-// page's own jQuery/DataTables, situacao-fetch.js reuses the page's
-// authenticated session) — which means indexedDB.open() there opens a
-// database on the PAGE's origin, not the extension's. Three matched hosts
-// then mean up to three separate, silently diverging histories, and
-// clearing site data for the page (the standard fix for an F5 login loop)
-// destroys the history along with it.
+// The report runs in the MAIN world (situacao-report.js reads the page's
+// own jQuery/DataTables, situacao-fetch.js reuses the page's
+// authenticated session), which has no chrome.runtime. This script runs
+// in the ISOLATED world, which does, and relays each request to
+// situacao-worker.js — the service worker that owns the database on the
+// extension's own origin.
 //
-// This script is the fix: it runs in the ISOLATED world (the extension's
-// own origin) and is the ONLY place IndexedDB is touched. The MAIN-world
-// situacao-store.js keeps the same public API, but every call is now a
-// request carried over a shared DOM attribute, not window.postMessage.
+// Content scripts cannot own that database themselves: in both worlds,
+// IndexedDB belongs to the PORTAL's origin. Earlier versions did open it
+// here, on the assumption that this was the extension's origin; the
+// result was one silently diverging history per portal host, an options
+// page that saw none of them, and a history erased by clearing the
+// portal's site data (the standard fix for an F5 login loop).
+// migrarLegado() below moves any such history over, once.
 //
 // Why not postMessage: this portal is served through F5 BIG-IP APM's
 // JavaScript rewriting layer (cache-fm-Modern.js), which wraps the page's
@@ -33,15 +35,8 @@
 
   if (window.__municProSituacaoBridge) return;
 
-  const { diffSnapshot, rowKey } = window.__municProSituacaoDiff;
-
-  const DB_NAME = 'munic-pro';
-  const DB_VERSION = 1;
-  const STORE_SITUACAO = 'situacao';
-  const STORE_RUNS = 'runs';
-
   // Transport contract with situacao-store.js (MAIN world), carried on
-  // document.documentElement's dataset rather than postMessage:
+  // document.documentElement's attributes rather than postMessage:
   //   request attribute (municProReq):  JSON { id, method, args }
   //   reply attribute   (municProReply): JSON { id, result } or { id, error }
   //
@@ -52,146 +47,75 @@
   const ATTR_REQ = 'data-munic-pro-req';
   const ATTR_REPLY = 'data-munic-pro-reply';
 
-  function promisify(req) {
+  const { criarDb, apagarBanco, DB_NAME } = globalThis.__municProSituacaoDb;
+
+  // One request to situacao-worker.js, which owns the database.
+  function viaWorker(method, args) {
     return new Promise((resolve, reject) => {
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      chrome.runtime.sendMessage({ municPro: 'db', method, args }, (resp) => {
+        const err = chrome.runtime.lastError;
+        if (err) { reject(new Error(err.message)); return; }
+        if (!resp) { reject(new Error('o service worker não respondeu.')); return; }
+        if ('error' in resp) reject(new Error(resp.error));
+        else resolve(resp.result);
+      });
     });
   }
 
-  function txDone(tx) {
-    return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
-
-  function openDb() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE_SITUACAO)) {
-          // Auto-increment: one município+questionário+UF has MANY rows
-          // over time (one per state), so the key cannot be the business
-          // key.
-          const s = db.createObjectStore(STORE_SITUACAO, {
-            keyPath: 'id',
-            autoIncrement: true,
-          });
-          // Open rows are looked up on every save. IndexedDB cannot index
-          // on null, so `open_key` holds the row key while the row is
-          // current and is deleted when it closes — making this index
-          // contain exactly the open rows.
-          s.createIndex('open_key', 'open_key', { unique: true });
-        }
-        if (!db.objectStoreNames.contains(STORE_RUNS)) {
-          db.createObjectStore(STORE_RUNS, { keyPath: 'run_ts' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async function getCurrent() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_SITUACAO, 'readonly');
-    const rows = await promisify(tx.objectStore(STORE_SITUACAO).getAll());
-    db.close();
-    return rows.filter((r) => r.until_ts === null);
-  }
-
-  async function getAll() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_SITUACAO, 'readonly');
-    const rows = await promisify(tx.objectStore(STORE_SITUACAO).getAll());
-    db.close();
-    return rows;
-  }
-
-  async function getRuns() {
-    const db = await openDb();
-    const tx = db.transaction(STORE_RUNS, 'readonly');
-    const runs = await promisify(tx.objectStore(STORE_RUNS).getAll());
-    db.close();
-    return runs.sort((a, b) => String(a.run_ts).localeCompare(String(b.run_ts)));
-  }
-
-  async function clearAll() {
-    const db = await openDb();
-    const tx = db.transaction([STORE_SITUACAO, STORE_RUNS], 'readwrite');
-    tx.objectStore(STORE_SITUACAO).clear();
-    tx.objectStore(STORE_RUNS).clear();
-    await txDone(tx);
-    db.close();
-  }
-
-  // Applies one fetch to the store: closes what changed or vanished,
-  // opens what is new, and records the run either way.
+  // Moves a history earlier versions kept on the PORTAL's origin into the
+  // extension's, then deletes the old copy. Those versions opened
+  // IndexedDB here, in the content script, believing it to be the
+  // extension's origin; it was the portal's — so each portal host held
+  // its own history, the options page saw none of it, and clearing site
+  // data erased it.
   //
-  // The whole thing runs in ONE readwrite transaction, so a failure
-  // halfway cannot leave history half-updated.
-  async function saveSnapshot(rows, runTs, warnings) {
-    const db = await openDb();
-    const tx = db.transaction([STORE_SITUACAO, STORE_RUNS], 'readwrite');
-    const situacao = tx.objectStore(STORE_SITUACAO);
-    const runs = tx.objectStore(STORE_RUNS);
-
-    // Scoped to the incoming snapshot's OWN UF: diffSnapshot must never
-    // be shown another UF's open rows as "current", or every município
-    // of the previous UF would be closed as "vanished" the moment the
-    // page's UF dropdown changes and a different UF is fetched — the
-    // exact corruption UF-in-the-key exists to prevent. rowKey already
-    // includes uf_sigla, so cross-UF keys never collide, but that alone
-    // does not stop THIS diff call from seeing rows it has no business
-    // comparing against.
-    const ufAtual = rows.length ? rows[0].uf_sigla : null;
-    const stored = await promisify(situacao.getAll());
-    const current = stored.filter((r) =>
-      r.until_ts === null && (ufAtual === null || r.uf_sigla === ufAtual));
-
-    const { toClose, toInsert, nChanged } = diffSnapshot(current, rows, runTs);
-
-    const byKey = new Map(current.map((r) => [rowKey(r), r]));
-    for (const { key, until_ts } of toClose) {
-      const existing = byKey.get(key);
-      if (!existing) continue;
-      // Drop open_key as the row closes: the index then holds only open
-      // rows, and its uniqueness constraint stays satisfiable when the
-      // replacement row for the same key is inserted below.
-      const { open_key, ...rest } = existing;
-      situacao.put({ ...rest, until_ts });
+  // The old database is deleted only after the merge succeeded: a failure
+  // leaves it in place to be retried by the next request. The merge is
+  // idempotent (natural keys), so a retry after a partial failure cannot
+  // duplicate rows.
+  async function migrarLegado(factory) {
+    if (typeof factory.databases === 'function') {
+      const dbs = await factory.databases();
+      if (!dbs.some((d) => d.name === DB_NAME)) return { migrated: false };
     }
-
-    for (const r of toInsert) {
-      situacao.add({ ...r, open_key: rowKey(r) });
+    const legado = criarDb(factory);
+    const [rows, runs] = await Promise.all([legado.getAll(), legado.getRuns()]);
+    let result = null;
+    if (rows.length || runs.length) {
+      result = await viaWorker('mergeSnapshot', [{ rows, runs }]);
     }
-
-    // uf_sigla/id_uf are not part of VALUE_FIELDS (they are part of the
-    // key, not a mutable value), so they are not diffed here, only carried
-    // onto the run record — a run is always for exactly one UF, since the
-    // fetch layer reads the page's #IdUf select and posts one UF per
-    // request.
-    runs.put({
-      run_ts: runTs,
-      n_rows: rows.length,
-      n_changed: nChanged,
-      warnings: warnings || [],
-      uf_sigla: rows.length ? rows[0].uf_sigla : null,
-      id_uf: rows.length ? rows[0].id_uf ?? null : null,
-    });
-
-    await txDone(tx);
-    db.close();
-    return { nChanged, nRows: rows.length };
+    await apagarBanco(factory);
+    return { migrated: true, result };
   }
 
-  // openDb is deliberately NOT in the RPC table: an IDBDatabase handle
-  // cannot cross the JSON-over-DOM-attribute boundary, and nothing on the
-  // MAIN side needs the handle itself — only the operations below.
-  const METHODS = { saveSnapshot, getCurrent, getAll, getRuns, clearAll };
+  // Every request waits for this, so the first save of a session can never
+  // race the merge (it would open rows the merge then collides with).
+  //
+  // Started by the first request, not at load: this script loads on every
+  // page of three whole hosts, and off the report page it must open no
+  // database at all (the Web Store host-permission justification says
+  // so). Requests come only from the report page. The portal-origin
+  // factory is whatever this content script sees as indexedDB.
+  let pronto = null;
+  function migrado() {
+    if (!pronto) {
+      pronto = migrarLegado(indexedDB).catch((err) => {
+        pronto = null; // retried by the next request
+        console.warn('[munic-pro] migração do histórico antigo falhou; ' +
+          'será tentada de novo:', err);
+      });
+    }
+    return pronto;
+  }
+
+  // The methods the page may call. mergeSnapshot is deliberately absent:
+  // only the migration above uses it.
+  const METHOD_NAMES = [
+    'saveSnapshot', 'getCurrent', 'getAll', 'getRuns', 'clearAll',
+    'getPref', 'setPref',
+  ];
+  const METHODS = Object.fromEntries(METHOD_NAMES.map((name) =>
+    [name, async (...args) => { await migrado(); return viaWorker(name, args); }]));
 
   function writeReply(payload) {
     document.documentElement.setAttribute(ATTR_REPLY, JSON.stringify(payload));
@@ -247,9 +171,9 @@
     attributeFilter: [ATTR_REQ],
   });
 
-  // Exposed only for the ISOLATED-world test suite, which exercises the
-  // real IndexedDB logic directly rather than through the DOM channel.
+  // Exposed for tests: the relayed methods, and the migration so it can be
+  // run against a seeded portal-origin database.
   window.__municProSituacaoBridge = {
-    ...METHODS, openDb, ATTR_REQ, ATTR_REPLY,
+    ...METHODS, migrarLegado, ATTR_REQ, ATTR_REPLY,
   };
 })();
