@@ -104,8 +104,9 @@ describe('situacaoRec', () => {
     expect(A.situacaoRec('Em Validação')).toBe('Digitação/Validação');
   });
 
-  test('Em Supervisão lands in the Supervisão/Análise bucket', () => {
+  test('Em Supervisão and Em Análise land in the Supervisão/Análise bucket', () => {
     expect(A.situacaoRec('Em Supervisão')).toBe('Supervisão/Análise');
+    expect(A.situacaoRec('Em Análise')).toBe('Supervisão/Análise');
   });
 
   test('passes through Não Iniciado and Concluído unchanged', () => {

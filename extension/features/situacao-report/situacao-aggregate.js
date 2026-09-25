@@ -32,9 +32,9 @@
     'Dig. Informante': 'Digitação/Validação',
     'Dig. Ibge': 'Digitação/Validação',
     'Em Validação': 'Digitação/Validação',
-    // Seen live in September 2026: the first raw value observed to
-    // belong in this bucket.
+    // Both seen live in September 2026.
     'Em Supervisão': 'Supervisão/Análise',
+    'Em Análise': 'Supervisão/Análise',
     'Concluído': 'Concluído',
   };
 

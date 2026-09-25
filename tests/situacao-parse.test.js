@@ -79,10 +79,13 @@ describe('parseSituacao', () => {
 
   // The live warning that added it: "Situação desconhecida (mantida como
   // veio, sem cor): Em Supervisão".
-  test('Em Supervisão is known, not warned about', () => {
-    const html = SAMPLE.replace('Conclu&#237;do', 'Em Supervis&#227;o');
+  test.each([
+    ['Em Supervis&#227;o', 'Em Supervisão'],
+    ['Em An&#225;lise', 'Em Análise'],
+  ])('%s is known, not warned about', (html_, situacao) => {
+    const html = SAMPLE.replace('Conclu&#237;do', html_);
     const { rows, warnings } = parseSituacao(html);
-    expect(rows.find((r) => r.situacao === 'Em Supervisão')).toBeTruthy();
+    expect(rows.find((r) => r.situacao === situacao)).toBeTruthy();
     expect(warnings).toEqual([]);
   });
 
