@@ -83,6 +83,7 @@ test('the MAIN-world content script loads in dependency order', () => {
     'features/situacao-report/situacao-aggregate.js',
     'features/situacao-report/situacao-report.js',
     'features/situacao-export/situacao-export.js',
+    'features/situacao-export/situacao-xlsx.js',
   ]);
 });
 

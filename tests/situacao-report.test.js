@@ -1505,3 +1505,119 @@ describe('Relatório-PRO outside Bahia', () => {
     expect(await tabsFor('290070200')).toContain('Assistência %');
   });
 });
+
+describe('downloads', () => {
+  const grid = [
+    { key: 'a', municipio_nome: 'Abaíra', agencia_nome: 'LIVRAMENTO',
+      agencia_codigo: '290070200', questionario: 'Básico',
+      name: 'criticas_informativas', cells: [164] },
+    { key: 'b', municipio_nome: 'Abaíra', agencia_nome: 'LIVRAMENTO',
+      agencia_codigo: '290070200', questionario: 'Básico',
+      name: 'situacao_rec', cells: [null] },
+  ];
+  const porAgencia = [{ group: 'LIVRAMENTO', situacao: 'Concluído',
+    cells: [3], pctCells: [0.125] }];
+  const data = {
+    grid,
+    columns: [{ run_ts: '2026-09-22T10:00:00' }],
+    porAssistencia: null,
+    porAssistenciaPct: null,
+    porAgencia,
+    porAgenciaPct: porAgencia,
+    warnings: [],
+  };
+  const realMP = window.__municPro;
+  const realX = window.__municProXlsx;
+  let baixados;
+
+  beforeEach(() => {
+    baixados = [];
+    window.__municPro = {
+      ...realMP,
+      downloadFile: (nome, conteudo, tipo) => baixados.push({ nome, conteudo, tipo }),
+      timestampSlug: () => ({ data: '2026-09-24', hora: '114500' }),
+    };
+  });
+  afterEach(() => {
+    window.__municPro = realMP;
+    window.__municProXlsx = realX;
+  });
+
+  const botao = (panel, texto) => [...panel.querySelectorAll('button')]
+    .find((b) => b.textContent === texto);
+
+  test('the Município model types its cells', () => {
+    const m = R.modeloMunicipio(grid, data.columns);
+    expect(m.cabecalho[5]).toBe('22/09/2026 10:00');
+    expect(m.linhas[0][5]).toEqual({ v: 164, tipo: 'numero' });
+    expect(m.linhas[1][5].v).toBeNull();
+  });
+
+  // The zip's entries, decoded, keyed by file name.
+  function csvsBaixados(panel) {
+    let files;
+    window.__municProXlsx = { ...realX, zipStored: (f) => { files = f; return new Uint8Array(); } };
+    botao(panel, 'CSV (.zip)').click();
+    const dec = new TextDecoder('utf-8', { ignoreBOM: true });
+    return Object.fromEntries(files.map((f) => [f.name, dec.decode(f.data)]));
+  }
+
+  test('CSV (.zip): one CSV per tab, in one download', () => {
+    const csvs = csvsBaixados(R.buildPanel(data));
+    expect(Object.keys(csvs)).toEqual([
+      'munic2026_municipio_2026-09-24_114500.csv',
+      'munic2026_agencia_2026-09-24_114500.csv',
+      'munic2026_agencia_pct_2026-09-24_114500.csv',
+    ]);
+    expect(baixados[0].nome).toBe('munic2026_relatorio_csv_2026-09-24_114500.zip');
+  });
+
+  // Formatted as shown, empty for no data, with the BOM Excel needs for
+  // the accents.
+  test('each CSV reads like its tab', () => {
+    const csvs = csvsBaixados(R.buildPanel(data));
+    const mun = csvs['munic2026_municipio_2026-09-24_114500.csv'];
+    expect(mun.startsWith('\uFEFF')).toBe(true);
+    const linhas = mun.slice(1).trim().split('\r\n');
+    expect(linhas[0]).toBe(
+      'Assistência;Agência;Município;Questionário;Indicador;22/09/2026 10:00');
+    expect(linhas[1]).toBe('Alagoinhas;LIVRAMENTO;Abaíra;Básico;Críticas informativas;164');
+    expect(linhas[2].endsWith('Situação;')).toBe(true);
+    expect(csvs['munic2026_agencia_pct_2026-09-24_114500.csv'])
+      .toContain('LIVRAMENTO;Concluído;12,5%');
+  });
+
+  // Every row, not just the page DataTables is showing.
+  test('CSV holds every row regardless of paging', () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({ ...grid[0], key: `k${i}` }));
+    const csvs = csvsBaixados(R.buildPanel({ ...data, grid: many }));
+    expect(csvs['munic2026_municipio_2026-09-24_114500.csv'].trim().split('\r\n').length)
+      .toBe(61);
+  });
+
+  test('hidden columns are left out of both downloads', () => {
+    const panel = R.buildPanel({ ...data, colunasOcultas: ['Assistência'] });
+    const input = [...panel.querySelectorAll('.munic-pro-colunas label')]
+      .find((l) => l.textContent.trim() === 'Situação').querySelector('input');
+    input.checked = false;
+    input.dispatchEvent(new Event('change'));
+
+    const csvs = csvsBaixados(panel);
+    expect(csvs['munic2026_municipio_2026-09-24_114500.csv'].slice(1).startsWith('Agência;'))
+      .toBe(true);
+    expect(csvs['munic2026_agencia_2026-09-24_114500.csv'].slice(1).startsWith('Grupo;22/09'))
+      .toBe(true);
+
+    let abas;
+    window.__municProXlsx = { ...realX, workbook: (s) => { abas = s; return new Uint8Array(); } };
+    botao(panel, 'Excel').click();
+    expect(abas.map((a) => a.nome)).toEqual(['Município', 'Agência', 'Agência %']);
+    expect(abas[1].cabecalho).toEqual(['Grupo', '22/09/2026 10:00']);
+    expect(abas[0].cabecalho).not.toContain('Assistência');
+    expect(baixados[1].nome).toBe('munic2026_relatorio_2026-09-24_114500.xlsx');
+  });
+
+  test('slugAba', () => {
+    expect(R.slugAba('Assistência %')).toBe('assistencia_pct');
+  });
+});

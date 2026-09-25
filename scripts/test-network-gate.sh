@@ -66,6 +66,18 @@ fixture extension/features/situacao-report/zz-gate-test.js \
   "fetch('/x');"
 expect_fail "fetch() outside a fetch-sanctioned directory"
 
+fixture extension/features/situacao-export/zz-gate-test.js \
+  "const x = '<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">';"
+expect_pass "an Office Open XML namespace URI (an identifier, never fetched)"
+
+fixture extension/features/situacao-export/zz-gate-test.js \
+  "const x = '<a xmlns=\"http://schemas.openxmlformats.org/x\"/>' + 'https://example.com/y';"
+expect_fail "a real URL on the same line as an OOXML namespace"
+
+fixture extension/features/situacao-export/zz-gate-test.js \
+  "const u = 'http://schemas.openxmlformats.org.evil.com/x';"
+expect_fail "a host that only starts like the OOXML namespace"
+
 fixture extension/features/situacao-store/zz-gate-test.js \
   "fetch('/x');"
 expect_fail "fetch() inside the storage-sanctioned directory"

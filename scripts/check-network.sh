@@ -87,7 +87,13 @@ M=$(grep_all "$EXFIL")
 [ -n "$(echo "$M" | tr -d '[:space:]')" ] && \
   fail "exfiltration / code-execution API in extension/:" "$M"
 
-M=$(grep_all "$URL_PATTERN")
+# One exemption: the Office Open XML namespace URIs the .xlsx writer
+# (situacao-export/situacao-xlsx.js) must embed. They are identifiers the
+# format requires verbatim, never fetched. Only that exact prefix is
+# stripped before re-checking the line, so any other URL — even one on
+# the same line — still fails.
+OOXML_NS='http://schemas\.openxmlformats\.org/[^"'"'"' ]*'
+M=$(grep_all "$URL_PATTERN" | sed -E "s#$OOXML_NS##g" | grep -E "$URL_PATTERN")
 [ -n "$(echo "$M" | tr -d '[:space:]')" ] && \
   fail "absolute URL in extension/ (requests must be relative to location.origin):" "$M"
 

@@ -41,6 +41,9 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
   horizontal dentro do painel, e o menu "Colunas" oculta as colunas que
   você não usa (Assistência, Agência, Questionário…) até você mostrá-las
   de novo.
+  "Excel" baixa todas as abas numa planilha .xlsx, uma folha por aba,
+  com números, percentuais e as cores de situação; "CSV (.zip)" baixa
+  as mesmas abas como um CSV cada, num único .zip.
 • CSV-PRO — exporta uma linha por município por consulta (separador
   `;`, com BOM, pronto para o Excel brasileiro).
 • Backup JSON — exporta o histórico completo guardado, como cópia de

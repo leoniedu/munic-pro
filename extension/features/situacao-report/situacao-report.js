@@ -42,6 +42,8 @@
     .munic-pro-barra { display: flex; gap: 12px; align-items: flex-start;
       margin-bottom: 8px; }
     .munic-pro-colunas summary { cursor: pointer; padding: 4px 0; }
+    .munic-pro-downloads { display: flex; gap: 4px; margin-left: auto; }
+    .munic-pro-downloads button { padding: 4px 12px; cursor: pointer; }
     .munic-pro-colunas label { display: block; font-weight: normal; }
     .munic-pro-tabs { display: flex; gap: 4px; }
     .munic-pro-tabs button { padding: 4px 12px; cursor: pointer; }
@@ -186,81 +188,153 @@
     return INDICADOR_LABEL[name] || name;
   }
 
+  // Each tab is built as a MODEL first — a header plus rows of typed
+  // cells { v, tipo, situacao } — and only then rendered. The same model
+  // feeds the tab's CSV and the Excel workbook, so a download holds
+  // exactly what the tab shows, typed: numbers stay numbers, percentages
+  // stay fractions, and the situação colour travels with its cell.
+  //   tipo: 'texto' | 'numero' | 'pct';  v: null for an empty cell.
+  //   situacao: the bucket whose colour the cell takes, if any.
+  const texto = (v) => ({ v: v ?? '', tipo: 'texto' });
+
   // Colours only the situacao_rec row — críticas rows hold plain counts,
   // same as the Excel colour-codes only its situação row.
-  function renderMunicipioTab(grid, columns) {
-    // Assistência first, matching the 2025 workbook's sheet 1 column order
-    // (assistencia_nome | agencia_nome | municipio_nome | name | dates…).
-    const head = el('tr', {}, [
-      el('th', { text: 'Assistência' }),
-      el('th', { text: 'Agência' }),
-      el('th', { text: 'Município' }),
-      el('th', { text: 'Questionário' }),
-      el('th', { text: 'Indicador' }),
-      ...columns.map((c) => el('th', { text: fmtColumnHeader(c) })),
-    ]);
-
+  function modeloMunicipio(grid, columns) {
     // Derived, not stored: the grid line carries agencia_codigo so this can
     // resolve it. Guarded so the tab still renders if the lookup module is
     // ever absent, rather than throwing and blanking the whole panel.
     const assistenciaDe = (window.__municProAssistencias || {}).assistenciaDe
       || ((cod, nome) => nome || '');
 
-    const body = grid.map((line) => el('tr', {}, [
-      el('td', { text: assistenciaDe(line.agencia_codigo, line.agencia_nome) }),
-      el('td', { text: line.agencia_nome }),
-      el('td', { text: line.municipio_nome }),
-      el('td', { text: line.questionario }),
-      el('td', { text: indicadorLabel(line.name) }),
-      ...line.cells.map((cell) => el('td', {
-        text: cell === null ? '—' : cell,
-        class: cell === null
-          ? 'munic-pro-vazio'
-          : (line.name === 'situacao_rec' ? situacaoClass(cell) : ''),
-      })),
-    ]));
+    return {
+      // Assistência first, matching the 2025 workbook's sheet 1 column
+      // order (assistencia_nome | agencia_nome | municipio_nome | name |
+      // dates…).
+      cabecalho: [
+        'Assistência', 'Agência', 'Município', 'Questionário', 'Indicador',
+        ...columns.map(fmtColumnHeader),
+      ],
+      linhas: grid.map((line) => [
+        texto(assistenciaDe(line.agencia_codigo, line.agencia_nome)),
+        texto(line.agencia_nome),
+        texto(line.municipio_nome),
+        texto(line.questionario),
+        texto(indicadorLabel(line.name)),
+        ...line.cells.map((cell) => {
+          if (cell === null) return { v: null, tipo: 'texto' };
+          if (line.name === 'situacao_rec') {
+            return { v: cell, tipo: 'texto', situacao: cell };
+          }
+          return { v: cell, tipo: typeof cell === 'number' ? 'numero' : 'texto' };
+        }),
+      ]),
+    };
+  }
 
+  // One column per date (change #3), matching the Excel's
+  // situacao_assistencia / _pct sheets. `field` names which array of
+  // cells to show — 'cells' (counts) or 'pctCells' (within-group
+  // fractions). Both tabs previously received the SAME object and
+  // differed only by format, so the percentage tabs formatted raw counts:
+  // 18 municípios rendered as "1800,0%".
+  function modeloGrupo(counts, columns, tipo, field) {
+    return {
+      cabecalho: ['Grupo', 'Situação', ...columns.map(fmtColumnHeader)],
+      linhas: counts.map((c) => [
+        texto(c.group),
+        { v: c.situacao, tipo: 'texto', situacao: c.situacao },
+        ...(c[field || 'cells'] || []).map((cell) => ({ v: cell, tipo })),
+      ]),
+    };
+  }
+
+  // A cell as the panel shows it — and as the CSV writes it, except that
+  // the CSV leaves an empty cell empty rather than drawing a dash.
+  function textoCelula(cel) {
+    if (cel.v === null || cel.v === undefined) return '';
+    if (cel.tipo === 'pct') return fmtPct(cel.v);
+    return String(cel.v);
+  }
+
+  function renderTabela(modelo) {
+    const head = el('tr', {}, modelo.cabecalho.map((h) => el('th', { text: h })));
+    const body = modelo.linhas.map((linha) => el('tr', {}, linha.map((cel) => {
+      const vazio = cel.v === null || cel.v === undefined;
+      return el('td', {
+        text: vazio ? '—' : textoCelula(cel),
+        class: vazio ? 'munic-pro-vazio' : situacaoClass(cel.situacao),
+      });
+    })));
     return el('table', {}, [
       el('thead', {}, [head]),
       el('tbody', {}, body),
     ]);
+  }
+
+  function renderMunicipioTab(grid, columns) {
+    return renderTabela(modeloMunicipio(grid, columns));
   }
 
   function fmtCount(n) {
     return String(n);
   }
 
-  // One column per date (change #3), matching the Excel's
-  // situacao_assistencia / _pct sheets. `fmt` picks the cell format —
-  // fmtCount for the counts tab, fmtPct for the percentage tab — and
-  // counts is the groupCountsByColumn() shape ({group, situacao, cells}
-  // with `cells` renamed to whichever field `fmt` is meant to read; both
-  // tabs pass their own `cells`/`pctCells` array in as `cells` so this
-  // stays a single renderer).
-  // `field` names which array of cells to render — 'cells' (counts) or
-  // 'pctCells' (within-group percentages). Both tabs previously received
-  // the SAME object and differed only by `fmt`, so the percentage tabs ran
-  // fmtPct over raw counts: 18 municípios rendered as "1800,0%".
+  // `fmt` is fmtCount or fmtPct, kept as the selector so callers read as
+  // before; the model itself carries the type.
   function renderGroupTab(counts, columns, fmt, field) {
-    const head = el('tr', {}, [
-      el('th', { text: 'Grupo' }),
-      el('th', { text: 'Situação' }),
-      ...columns.map((c) => el('th', { text: fmtColumnHeader(c) })),
-    ]);
+    return renderTabela(modeloGrupo(
+      counts, columns, fmt === fmtPct ? 'pct' : 'numero', field));
+  }
 
-    const body = counts.map((c) => el('tr', {}, [
-      el('td', { text: c.group }),
-      el('td', { text: c.situacao, class: situacaoClass(c.situacao) }),
-      ...(c[field || 'cells'] || []).map((cell) => el('td', {
-        text: cell === null ? '—' : fmt(cell),
-        class: cell === null ? 'munic-pro-vazio' : '',
-      })),
-    ]));
+  // The model minus the columns hidden with "Colunas" — a download holds
+  // what the tab shows.
+  function semOcultas(modelo, ocultas) {
+    const manter = modelo.cabecalho
+      .map((h, i) => (ocultas.includes(h) ? -1 : i))
+      .filter((i) => i >= 0);
+    return {
+      cabecalho: manter.map((i) => modelo.cabecalho[i]),
+      linhas: modelo.linhas.map((l) => manter.map((i) => l[i])),
+    };
+  }
 
-    return el('table', {}, [
-      el('thead', {}, [head]),
-      el('tbody', {}, body),
-    ]);
+  // 'Assistência %' → 'assistencia_pct', for file names.
+  function slugAba(nome) {
+    return nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/%/g, 'pct').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  }
+
+  // Every row of the tab, whatever page or filter DataTables is showing.
+  function csvDoModelo(modelo) {
+    return window.__municPro.buildCsv(
+      modelo.cabecalho, modelo.linhas.map((l) => l.map(textoCelula)));
+  }
+
+  // The backstop for the workbook: the same tabs as plain CSVs, one per
+  // tab, zipped so it is still a single download (several at once make
+  // Chrome ask for permission). Each CSV carries the BOM the single CSV
+  // downloads do, so Excel reads the accents.
+  function baixarCsvs(abas, ocultas) {
+    const { data, hora } = window.__municPro.timestampSlug();
+    const enc = new TextEncoder();
+    const bytes = window.__municProXlsx.zipStored(abas.map(({ nome, modelo }) => ({
+      name: `munic2026_${slugAba(nome)}_${data}_${hora}.csv`,
+      data: enc.encode('\uFEFF' + csvDoModelo(semOcultas(modelo, ocultas))),
+    })));
+    window.__municPro.downloadFile(
+      `munic2026_relatorio_csv_${data}_${hora}.zip`, bytes, 'application/zip',
+      { bom: false });
+  }
+
+  function baixarExcel(abas, ocultas) {
+    const { data, hora } = window.__municPro.timestampSlug();
+    const bytes = window.__municProXlsx.workbook(abas.map(({ nome, modelo }) =>
+      ({ nome, ...semOcultas(modelo, ocultas) })));
+    window.__municPro.downloadFile(
+      `munic2026_relatorio_${data}_${hora}.xlsx`, bytes,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      { bom: false });
   }
 
   // Ported from sigc-pro's ultimo-movimento-map.js (initPanelTables /
@@ -571,20 +645,21 @@
     // The Assistência pair is left out when porAssistencia is null — a UF
     // with no agência in the (Bahia-only) lookup, where every group would
     // be "(sem assistência) <agência>", a copy of the Agência tabs.
-    const tabs = [
-      ['Município', () => renderMunicipioTab(data.grid, data.columns)],
+    const abas = [
+      { nome: 'Município', modelo: modeloMunicipio(data.grid, data.columns) },
       ...(data.porAssistencia ? [
-        ['Assistência', () => renderGroupTab(
-          data.porAssistencia, data.columns, fmtCount)],
-        ['Assistência %', () => renderGroupTab(
-          data.porAssistenciaPct, data.columns, fmtPct, 'pctCells')],
+        { nome: 'Assistência',
+          modelo: modeloGrupo(data.porAssistencia, data.columns, 'numero') },
+        { nome: 'Assistência %',
+          modelo: modeloGrupo(data.porAssistenciaPct, data.columns, 'pct', 'pctCells') },
       ] : []),
-      ['Agência', () => renderGroupTab(data.porAgencia, data.columns, fmtCount)],
-      ['Agência %', () => renderGroupTab(
-        data.porAgenciaPct, data.columns, fmtPct, 'pctCells')],
+      { nome: 'Agência',
+        modelo: modeloGrupo(data.porAgencia, data.columns, 'numero') },
+      { nome: 'Agência %',
+        modelo: modeloGrupo(data.porAgenciaPct, data.columns, 'pct', 'pctCells') },
     ];
-    const tabNames = tabs.map(([name]) => name);
-    const panes = tabs.map(([, render]) => render());
+    const tabNames = abas.map((a) => a.nome);
+    const panes = abas.map((a) => renderTabela(a.modelo));
 
     const buttons = tabNames.map((name, i) => {
       const b = el('button', { type: 'button', text: name });
@@ -606,9 +681,19 @@
     ]);
     panel.appendChild(barra);
     for (const p of panes) panel.appendChild(p);
-    // After the panes are in: the selector reads their headers.
-    barra.appendChild(buildSeletorColunas(
-      panel, data.colunasOcultas, data.salvarColunasOcultas));
+    // After the panes are in: the selector reads their headers. The
+    // downloads leave out whatever is hidden at the moment they are made.
+    let ocultas = [...(data.colunasOcultas || [])];
+    barra.appendChild(buildSeletorColunas(panel, ocultas, (v) => {
+      ocultas = v;
+      if (data.salvarColunasOcultas) data.salvarColunasOcultas(v);
+    }));
+
+    const excel = el('button', { type: 'button', text: 'Excel' });
+    excel.addEventListener('click', () => baixarExcel(abas, ocultas));
+    const csvs = el('button', { type: 'button', text: 'CSV (.zip)' });
+    csvs.addEventListener('click', () => baixarCsvs(abas, ocultas));
+    barra.appendChild(el('div', { class: 'munic-pro-downloads' }, [excel, csvs]));
 
     // A run that changed nothing gets no column (change #3) — without
     // this line, "the last run had no changes" would be indistinguishable
@@ -856,6 +941,11 @@
     situacaoClass,
     renderMunicipioTab,
     renderGroupTab,
+    modeloMunicipio,
+    modeloGrupo,
+    semOcultas,
+    csvDoModelo,
+    slugAba,
     buildPanel,
     cssColunasOcultas,
     buildSeletorColunas,
