@@ -35,6 +35,10 @@ e aos botões Excel e CSV (.zip) — convém substituí-la. O nome do
 usuário no cabeçalho do SIGC foi tapado, e o dock do macOS recortado:
 a listagem é pública.
 
-Falta ainda, se quiser uma segunda imagem: a aba **Município**, que é a
-que mostra para que serve a extensão — uma linha por município,
-questionário e indicador, com uma coluna por leitura.
+`painel-municipio-1280x800.png` — aba Município, da 0.1.39: painel em
+largura total, menu Colunas (Assistência e Agência ocultas), botões
+Excel e CSV (.zip), três colunas de leitura e as situações coloridas.
+A captura original (2916×1412) foi recortada no topo, reduzida a 1280 de
+largura e completada com faixas brancas até 800 de altura — recortá-la
+na proporção 16:10 cortaria as abas ou as datas. Sem nome de usuário no
+enquadramento.
