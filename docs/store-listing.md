@@ -59,7 +59,9 @@ O histórico é guardado como SCD tipo 2 no IndexedDB do navegador: uma
 linha por combinação de município/questionário/indicador, com as datas
 em que cada estado começou e terminou a valer. Um município que não muda
 de uma consulta para outra não custa nada a mais para guardar, por mais
-vezes que a extensão seja usada.
+vezes que a extensão seja usada. Ele fica no espaço da própria extensão,
+não no do site do SIGC: limpar os dados do site (a solução usual para o
+loop de login) não o apaga.
 
 PRIVACIDADE: não há nenhum recurso externo nesta extensão — nenhuma
 imagem, biblioteca, fonte ou script de fora, nada. A única requisição de
@@ -83,7 +85,8 @@ Código-fonte aberto: https://github.com/leoniedu/munic-pro
 Adds unofficial tools to the SIGC MUNIC 2026 (IBGE) status report page:
 one button that fetches the current status and keeps a dated history of
 it (a panel of up to five tabs — município, assistência, assistência %,
-agência, agência %), a CSV export of that history, and a full JSON backup of it.
+agência, agência %) that downloads as an Excel workbook or zipped CSVs,
+a CSV export of that history, and a full JSON backup of it.
 It requests NO browser permissions at all, and exists strictly to
 keep that history locally and let the user save it — nothing is
 transmitted anywhere outside the SIGC server the data came from.
