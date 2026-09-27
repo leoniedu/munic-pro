@@ -41,9 +41,23 @@ linhas, UFs, primeira/última data), o mesmo Backup JSON do painel,
 **importação** de um Backup JSON de volta (mescla sem duplicar linhas já
 presentes) e **limpar tudo**, com confirmação.
 
-O painel tem cinco abas: **Município** (uma linha por município,
-questionário e indicador, uma coluna por data, colorida por situação),
-**Assistência** e **Assistência %**, **Agência** e **Agência %**.
+O painel ocupa a largura da janela e tem até cinco abas:
+
+- **Município** — uma linha por município, questionário e indicador,
+  colorida por situação. Cada coluna é uma leitura que trouxe mudança:
+  as duas últimas de hoje, a última do dia anterior com leitura e, antes
+  disso, a última de cada semana. O CSV-PRO e o Backup JSON trazem todas.
+- **Assistência** e **Assistência %** — agrupadas pelas assistências da
+  Bahia; em outras UFs essas duas abas não aparecem.
+- **Agência** e **Agência %**.
+
+A tabela rola na horizontal dentro do painel. O menu **Colunas** oculta
+colunas (Assistência, Agência, Questionário…) até você mostrá-las de
+novo; a escolha fica guardada junto do histórico. **Excel** baixa todas
+as abas numa planilha `.xlsx`, uma folha por aba, com números,
+percentuais e as cores de situação; **CSV (.zip)** baixa as mesmas abas
+como um CSV cada, como reserva caso o Excel dê problema. As duas deixam
+de fora as colunas ocultas.
 
 
 ## Instalação

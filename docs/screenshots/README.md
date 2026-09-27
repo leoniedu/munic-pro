@@ -7,8 +7,9 @@ Nenhuma pode ser gerada daqui — precisa da página real, autenticada.
 
 1. **Painel aberto, aba Município** — mostra o que a extensão faz de mais
    evidente: a linha de botões azul-escuro como segunda linha da linha de
-   botões do próprio SIGC, e abaixo o painel com as cinco abas, uma coluna
-   por data e as situações coloridas.
+   botões do próprio SIGC, e abaixo o painel em largura total com as abas,
+   o menu Colunas, os botões Excel e CSV (.zip), as colunas de leitura e
+   as situações coloridas.
 2. *(opcional)* **Aba Assistência %** — mostra o agrupamento por
    assistência, que é o que o relatório de 2025 fazia.
 
@@ -28,7 +29,9 @@ nada de identificável no enquadramento antes de enviar.
 ## Já capturada
 
 `painel-agencia-pct-1280x800.png` — aba Agência %, com a linha de botões,
-as cinco abas, a coluna de data e as situações coloridas. O nome do
+as cinco abas, a coluna de data e as situações coloridas. **Desatualizada
+desde a 0.1.38**: é anterior ao painel em largura total, ao menu Colunas
+e aos botões Excel e CSV (.zip) — convém substituí-la. O nome do
 usuário no cabeçalho do SIGC foi tapado, e o dock do macOS recortado:
 a listagem é pública.
 
