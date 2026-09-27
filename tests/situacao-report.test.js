@@ -1621,3 +1621,20 @@ describe('downloads', () => {
     expect(R.slugAba('Assistência %')).toBe('assistencia_pct');
   });
 });
+
+describe('alargarPainel', () => {
+  // The live page's content column is not centred in the window, so the
+  // panel is placed by measurement: wherever its natural left edge falls,
+  // it ends up 16px from the window's edge and 32px narrower than it.
+  test.each([[340], [0], [-120]])('natural left %ipx → 16px from the edge', (natural) => {
+    const panel = document.createElement('div');
+    panel.getBoundingClientRect = () => ({
+      left: panel.style.marginLeft === '0px' ? natural : NaN,
+    });
+    Object.defineProperty(document.documentElement, 'clientWidth',
+      { value: 2000, configurable: true });
+    R.alargarPainel(panel);
+    expect(panel.style.marginLeft).toBe(`${16 - natural}px`);
+    expect(panel.style.width).toBe('1968px');
+  });
+});

@@ -26,14 +26,10 @@
   const STYLE = `
     /* overflow-x: the fallback scroll when DataTables is absent; with it,
        the table sits in .munic-pro-rolagem and this never triggers. */
-    /* Full window width: the portal centres its content in a narrow
-       column, which left most date columns behind the scroll. The margin
-       pulls the panel from that centred column out to 16px from the
-       window's edges, whatever the column's width. */
+    /* Width and left margin are set by alargarPainel(), measured. */
     .munic-pro-panel {
       font-size: 13px; overflow-x: auto; box-sizing: border-box;
-      width: calc(100vw - 32px);
-      margin: 12px 0 12px calc(50% - 50vw + 16px);
+      margin: 12px 0;
     }
     /* The table's own scroll box, so the date columns are reachable — the
        portal's page does not scroll sideways. Scrolls both ways so the
@@ -712,6 +708,24 @@
     return panel;
   }
 
+  const MARGEM_PAINEL = 16;
+
+  // Full window width, 16px from each edge: the portal's content column is
+  // narrow, which left most date columns behind the scroll.
+  //
+  // Measured, not CSS: an earlier calc(50% - 50vw) assumed that column was
+  // centred in the window. On the live page it is not, and the panel
+  // started off-screen to the left, cutting the first tabs and columns.
+  // So the panel's natural left edge is measured with its margin cleared,
+  // and the margin set to move it to 16px from the window's edge.
+  function alargarPainel(panel) {
+    panel.style.marginLeft = '0px';
+    const natural = panel.getBoundingClientRect().left + window.scrollX;
+    panel.style.marginLeft = `${MARGEM_PAINEL - natural}px`;
+    panel.style.width =
+      `${document.documentElement.clientWidth - 2 * MARGEM_PAINEL}px`;
+  }
+
   // Builds the button row. Kept thin: every piece of logic it calls is
   // tested on its own.
   function buildActions() {
@@ -895,6 +909,17 @@
 
       const card = bar.closest('.card') || bar.parentElement.parentElement;
       card.parentElement.insertBefore(panel, card.nextSibling);
+      alargarPainel(panel);
+      // Re-measured on resize for as long as this panel is on the page;
+      // the next Relatório-PRO replaces it, and its listener goes too.
+      const aoRedimensionar = () => {
+        if (!panel.isConnected) {
+          window.removeEventListener('resize', aoRedimensionar);
+          return;
+        }
+        alargarPainel(panel);
+      };
+      window.addEventListener('resize', aoRedimensionar);
       // After insertion, not before: DataTables reads each table's live
       // layout, and an un-inserted table has none to read.
       initPanelTables(panel);
@@ -947,6 +972,7 @@
     csvDoModelo,
     slugAba,
     buildPanel,
+    alargarPainel,
     cssColunasOcultas,
     buildSeletorColunas,
     actionsAnchor,
