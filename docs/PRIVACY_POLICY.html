@@ -21,7 +21,7 @@
 <body>
 <header><h1>MUNIC-PRO — Política de Privacidade</h1></header>
 <main>
-  <p><em>Última atualização: 22 de setembro de 2026.</em></p>
+  <p><em>Última atualização: 13 de outubro de 2026.</em></p>
 
   <div class="destaque"><strong>Resumo: o MUNIC-PRO guarda dados, mas não os
   coleta nem os transmite a ninguém. O histórico da situação da coleta MUNIC
@@ -40,9 +40,10 @@
   selecionada (uma requisição ao próprio servidor do SIGC), a menos que a
   fotografia mais recente já guardada tenha menos de um minuto — nesse caso
   reaproveita o histórico sem consultar de novo. Guarda uma fotografia datada
-  e abre um painel com cinco abas (Município, Assistência, Assistência %,
+  e abre um painel com até cinco abas (Município, Assistência, Assistência %,
   Agência, Agência %) construídas inteiramente a partir do histórico já
-  guardado no navegador. <strong>CSV-PRO</strong> exporta esse histórico como
+  guardado no navegador, que podem ser baixadas como planilha Excel ou
+  CSVs. <strong>CSV-PRO</strong> exporta esse histórico como
   uma planilha (uma linha por município por consulta). <strong>Backup
   JSON</strong> exporta o histórico completo, como cópia de segurança.</p>
 
@@ -64,11 +65,13 @@
   desenvolvedor, nem a qualquer servidor além do próprio SIGC de onde os
   dados vieram, e mesmo esse contato é uma leitura (consultar a situação
   atual), não um envio do histórico guardado.</p>
-  <p><strong>Limpar os dados de navegação do Chrome apaga esse
+  <p>O histórico fica no armazenamento da própria extensão, não no do
+  site do SIGC: limpar os dados do site do SIGC não o apaga.
+  <strong>Remover a extensão, ou limpar os dados dela, apaga esse
   histórico.</strong> É exatamente por isso que existe o botão
   <strong>Backup JSON</strong>: ele exporta uma cópia completa do histórico
-  para um arquivo no seu computador, que sobrevive a uma limpeza do perfil
-  do navegador e pode ser guardado onde você preferir.</p>
+  para um arquivo no seu computador, que pode ser guardado onde você
+  preferir.</p>
 
   <h2>4. Coleta e transmissão de dados</h2>
   <p>A única requisição de rede que a extensão faz é a consulta da situação
@@ -86,9 +89,10 @@
   terceiros, o MUNIC-PRO não carrega absolutamente nada de fora da própria
   página do SIGC e do próprio pacote da extensão. As tabelas do painel usam
   o jQuery/DataTables que a página do SIGC já carrega — nada é baixado ou
-  embutido para isso — e o agrupamento por assistência usa uma tabela de
-  referência (agência → assistência, para a Bahia) embutida na extensão,
-  não consultada pela rede. Não há telemetria, análise de uso nem qualquer
+  embutido para isso — e o agrupamento por agência e assistência usa
+  tabelas de referência da Bahia (município → agência, conforme a RCD 31,
+  e agência → assistência) embutidas na extensão, não consultadas pela
+  rede. Não há telemetria, análise de uso nem qualquer
   integração com serviços de terceiros.</p>
 
   <h2>5. Permissões do navegador</h2>

@@ -50,16 +50,22 @@
     <p>Consulta a situação atual de toda a UF selecionada (uma requisição ao
     próprio servidor do SIGC) — a menos que a fotografia mais recente já
     guardada tenha menos de um minuto. Guarda uma fotografia datada e abre
-    um painel com cinco abas: <strong>Município</strong> (uma linha por
-    município, questionário e indicador — críticas informativas, críticas
-    comparativas, situação — com uma coluna por semana ISO, colorida como
-    no relatório em Excel de 2025 que substitui; semanas sem consulta
-    aparecem como lacunas visíveis), <strong>Assistência</strong> e
-    <strong>Assistência %</strong> (agrupado pela tabela agência →
-    assistência da Bahia embutida na extensão), e <strong>Agência</strong> e
-    <strong>Agência %</strong>. Todas as tabelas têm ordenação, paginação,
-    busca geral e filtro por coluna, usando o jQuery/DataTables que a
-    própria página do SIGC já carrega.</p>
+    um painel, na largura da janela, com até cinco abas:
+    <strong>Município</strong> (uma linha por município, questionário e
+    indicador — críticas informativas, críticas comparativas, situação —
+    colorida como no relatório em Excel de 2025 que substitui; cada coluna
+    é uma leitura que trouxe mudança: as duas últimas de hoje, a última do
+    dia anterior com leitura e, antes disso, a última de cada semana),
+    <strong>Assistência</strong> e <strong>Assistência %</strong> (agrupado
+    pela tabela agência → assistência da Bahia embutida na extensão; em
+    outras UFs essas abas não aparecem), e <strong>Agência</strong> e
+    <strong>Agência %</strong>. Na Bahia, a agência de cada município segue
+    a RCD 31, não o SIGC; Salvador fica como o SIGC informa. Todas as
+    tabelas têm ordenação, paginação, busca geral e filtro por coluna,
+    usando o jQuery/DataTables que a própria página do SIGC já carrega.
+    <strong>Excel</strong> baixa todas as abas numa planilha
+    <code>.xlsx</code>; <strong>CSV (.zip)</strong>, as mesmas abas como
+    CSVs.</p>
   </div>
   <div class="card">
     <h3>📄 CSV-PRO</h3>
@@ -70,8 +76,8 @@
   <div class="card">
     <h3>💾 Backup JSON</h3>
     <p>Exporta o histórico completo guardado, como cópia de segurança —
-    útil porque limpar os dados de navegação do Chrome apaga o histórico
-    guardado no IndexedDB.</p>
+    útil porque remover a extensão, ou limpar os dados dela, apaga o
+    histórico guardado no IndexedDB.</p>
   </div>
   <div class="card">
     <h3>⚙️ Página de Opções</h3>
@@ -102,11 +108,10 @@
     <li>Abra a página Situação das Prefeituras do SIGC MUNIC 2026 e use os botões <strong>PRO</strong>.</li>
   </ol>
   <p>Requer Chrome 111+. A extensão só age na página do SIGC MUNIC 2026 e
-  valida os botões nativos da página antes de se anexar a eles. Solicita
-  duas permissões — <code>storage</code>, para guardar o histórico
-  localmente, e <code>downloads</code>, para salvar os arquivos exportados
-  — e nenhum dado sai do seu computador: a única requisição de rede é a
-  consulta ao próprio servidor do SIGC, mediante clique.</p>
+  valida os botões nativos da página antes de se anexar a eles. Não
+  solicita nenhuma permissão do navegador, e nenhum dado sai do seu
+  computador: a única requisição de rede é a consulta ao próprio servidor
+  do SIGC, mediante clique.</p>
 </main>
 <footer>MUNIC-PRO · projeto não oficial · MIT · <a href="PRIVACY_POLICY.html">Política de Privacidade</a></footer>
 </body>

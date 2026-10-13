@@ -10,9 +10,9 @@ Histórico não oficial da coleta MUNIC 2026 (IBGE) por município, ao longo do 
 ## Detailed description
 
 ```
-MUNIC-PRO adiciona três botões azuis à página do SIGC "Situação das
-Prefeituras, com Críticas da UF" (SIGC MUNIC 2026, IBGE), ao lado dos
-botões nativos — que não são alterados.
+MUNIC-PRO adiciona uma linha de três botões azuis à página do SIGC
+"Situação das Prefeituras, com Críticas da UF" (SIGC MUNIC 2026, IBGE),
+abaixo dos botões nativos — que não são alterados.
 
 O PROBLEMA: o SIGC mostra apenas a situação ATUAL da coleta. A cada
 atualização, o valor anterior é sobrescrito — não há como ver o que mudou
@@ -22,8 +22,8 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
 • Relatório-PRO — consulta a situação atual de toda a UF (uma requisição
   ao próprio servidor do SIGC) — a menos que a fotografia mais recente já
   guardada tenha menos de um minuto, caso em que reaproveita o histórico
-  sem consultar de novo. Guarda uma fotografia datada e abre um painel
-  com até cinco abas:
+  sem consultar de novo. Guarda uma fotografia datada e abre um painel,
+  na largura da janela, com até cinco abas:
   - Município — uma linha por município, por questionário (Básico e
     Suplementar) e por indicador (críticas informativas, críticas
     comparativas, situação), colorida como no relatório em Excel de
@@ -35,12 +35,13 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
     municípios da Bahia: 50 agências em 6 assistências), em contagem e
     em percentual. Em outras UFs essas duas abas não aparecem.
   - Agência e Agência % — o mesmo, agrupado por agência.
+  Na Bahia, a agência de cada município segue a RCD 31 (tabela também
+  embutida na extensão), não o SIGC, que diverge em alguns municípios;
+  Salvador fica como o SIGC informa.
   Todas as tabelas têm ordenação, paginação, busca geral e um filtro por
   coluna, usando o jQuery/DataTables que a própria página do SIGC já
   carrega — nada é baixado ou embutido para isso. A tabela rola na
-  horizontal dentro do painel, e o menu "Colunas" oculta as colunas que
-  você não usa (Assistência, Agência, Questionário…) até você mostrá-las
-  de novo.
+  horizontal dentro do painel.
   "Excel" baixa todas as abas numa planilha .xlsx, uma folha por aba,
   com números, percentuais e as cores de situação; "CSV (.zip)" baixa
   as mesmas abas como um CSV cada, num único .zip.

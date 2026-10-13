@@ -23,8 +23,8 @@ não guarda.
 
 ## Funcionalidades
 
-Na página **Relatório Situação Município** do SIGC MUNIC 2026, um botão azul
-ao lado dos nativos:
+Na página **Situação das Prefeituras, com Críticas da UF** do SIGC MUNIC
+2026, uma segunda linha de botões azuis abaixo dos nativos:
 
 - **Relatório-PRO** — lê a situação de todos os municípios da UF e guarda
   uma fotografia datada, e então abre o painel. Só rebusca se a última
@@ -51,14 +51,14 @@ O painel ocupa a largura da janela e tem até cinco abas:
   Bahia; em outras UFs essas duas abas não aparecem.
 - **Agência** e **Agência %**.
 
-A tabela rola na horizontal dentro do painel. O menu **Colunas** oculta
-colunas (Assistência, Agência, Questionário…) até você mostrá-las de
-novo; a escolha fica guardada junto do histórico. **Excel** baixa todas
+Na Bahia, a agência de cada município segue a RCD 31, não o SIGC (que
+diverge em alguns municípios); Salvador fica como o SIGC informa. O painel
+e o CSV-PRO usam a RCD 31; o Backup JSON guarda o que o SIGC enviou.
+
+A tabela rola na horizontal dentro do painel. **Excel** baixa todas
 as abas numa planilha `.xlsx`, uma folha por aba, com números,
 percentuais e as cores de situação; **CSV (.zip)** baixa as mesmas abas
-como um CSV cada, como reserva caso o Excel dê problema. As duas deixam
-de fora as colunas ocultas.
-
+como um CSV cada, como reserva caso o Excel dê problema.
 
 ## Instalação
 
@@ -84,11 +84,6 @@ JSON.
 As requisições de rede vão **exclusivamente ao próprio servidor do SIGC**, nas
 mesmas URLs que a página já usa, e só mediante clique. Não há servidor
 externo, telemetria, analytics nem envio de dados para lugar nenhum.
-
-O histórico fica apenas no seu navegador (no armazenamento da própria
-extensão) e nos arquivos que você baixar. Remover a extensão, ou limpar os
-dados dela especificamente, apaga o histórico guardado — por isso o Backup
-JSON existe.
 
 ## Desenvolvimento
 
