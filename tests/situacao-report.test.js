@@ -1409,78 +1409,6 @@ describe('inert on pages that are not the MUNIC report', () => {
   });
 });
 
-describe('Colunas selector (hidden columns)', () => {
-  const grid = [{
-    key: '1|Básico|situacao_rec', municipio_nome: 'Alagoinhas',
-    agencia_nome: 'ALAGOINHAS', agencia_codigo: '290070100',
-    questionario: 'Básico', name: 'situacao_rec', cells: ['Concluído'],
-  }];
-  const data = {
-    grid,
-    columns: [{ run_ts: '2026-09-22T10:00:00' }],
-    porAssistencia: [],
-    porAssistenciaPct: [],
-    porAgencia: [],
-    porAgenciaPct: [],
-    warnings: [],
-  };
-  let saved;
-  const build = (ocultas) => R.buildPanel({
-    ...data, colunasOcultas: ocultas, salvarColunasOcultas: (v) => { saved = [...v]; },
-  });
-
-  beforeEach(() => { saved = undefined; });
-
-  const caixa = (panel, rotulo) => [...panel.querySelectorAll('.munic-pro-colunas label')]
-    .find((l) => l.textContent.trim() === rotulo).querySelector('input');
-  const css = (panel) => panel.querySelector('.munic-pro-estilo-ocultas').textContent;
-
-  // Date headings roll over as runs come and go; a saved one would soon
-  // match nothing, so they are not offered.
-  test('offers every non-date column name once, and no dates', () => {
-    const panel = build([]);
-    const rotulos = [...panel.querySelectorAll('.munic-pro-colunas label')]
-      .map((l) => l.textContent.trim());
-    expect(rotulos).toEqual([
-      'Assistência', 'Agência', 'Município', 'Questionário', 'Indicador',
-      'Grupo', 'Situação',
-    ]);
-  });
-
-  test('unticking hides the column and saves the choice', () => {
-    const panel = build([]);
-    const input = caixa(panel, 'Agência');
-    input.checked = false;
-    input.dispatchEvent(new Event('change'));
-    expect(saved).toEqual(['Agência']);
-    // Agência is the 2nd column of the Município tab (pane 0).
-    expect(css(panel)).toContain(
-      'table[data-munic-pro-pane="0"] tr > :nth-child(2) { display: none; }');
-  });
-
-  test('a saved choice applies on the next build, and re-ticking reverses it', () => {
-    const panel = build(['Situação']);
-    const input = caixa(panel, 'Situação');
-    expect(input.checked).toBe(false);
-    // Situação is the 2nd column of all four group tabs.
-    for (const i of [1, 2, 3, 4]) {
-      expect(css(panel)).toContain(`table[data-munic-pro-pane="${i}"] tr > :nth-child(2)`);
-    }
-    input.checked = true;
-    input.dispatchEvent(new Event('change'));
-    expect(saved).toEqual([]);
-    expect(css(panel)).toBe('');
-  });
-
-  test('works with nothing to save to, just unsaved', () => {
-    const panel = R.buildPanel(data);
-    const input = caixa(panel, 'Agência');
-    input.checked = false;
-    input.dispatchEvent(new Event('change'));
-    expect(css(panel)).toContain(':nth-child(2)');
-  });
-});
-
 describe('horizontal scroll', () => {
   afterEach(() => { delete window.jQuery; delete window.$; });
 
@@ -1625,28 +1553,6 @@ describe('downloads', () => {
     const csvs = csvsBaixados(R.buildPanel({ ...data, grid: many }));
     expect(csvs['munic2026_municipio_2026-09-24_114500.csv'].trim().split('\r\n').length)
       .toBe(61);
-  });
-
-  test('hidden columns are left out of both downloads', () => {
-    const panel = R.buildPanel({ ...data, colunasOcultas: ['Assistência'] });
-    const input = [...panel.querySelectorAll('.munic-pro-colunas label')]
-      .find((l) => l.textContent.trim() === 'Situação').querySelector('input');
-    input.checked = false;
-    input.dispatchEvent(new Event('change'));
-
-    const csvs = csvsBaixados(panel);
-    expect(csvs['munic2026_municipio_2026-09-24_114500.csv'].slice(1).startsWith('Agência;'))
-      .toBe(true);
-    expect(csvs['munic2026_agencia_2026-09-24_114500.csv'].slice(1).startsWith('Grupo;22/09'))
-      .toBe(true);
-
-    let abas;
-    window.__municProXlsx = { ...realX, workbook: (s) => { abas = s; return new Uint8Array(); } };
-    botao(panel, 'Excel').click();
-    expect(abas.map((a) => a.nome)).toEqual(['Município', 'Agência', 'Agência %']);
-    expect(abas[1].cabecalho).toEqual(['Grupo', '22/09/2026 10:00']);
-    expect(abas[0].cabecalho).not.toContain('Assistência');
-    expect(baixados[1].nome).toBe('munic2026_relatorio_2026-09-24_114500.xlsx');
   });
 
   test('slugAba', () => {

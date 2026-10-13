@@ -37,10 +37,8 @@
     .munic-pro-rolagem { overflow: auto; max-height: 70vh; clear: both; }
     .munic-pro-barra { display: flex; gap: 12px; align-items: flex-start;
       margin-bottom: 8px; }
-    .munic-pro-colunas summary { cursor: pointer; padding: 4px 0; }
     .munic-pro-downloads { display: flex; gap: 4px; margin-left: auto; }
     .munic-pro-downloads button { padding: 4px 12px; cursor: pointer; }
-    .munic-pro-colunas label { display: block; font-weight: normal; }
     .munic-pro-tabs { display: flex; gap: 4px; }
     .munic-pro-tabs button { padding: 4px 12px; cursor: pointer; }
     .munic-pro-tabs button[aria-selected="true"] { font-weight: bold; }
@@ -282,18 +280,6 @@
       counts, columns, fmt === fmtPct ? 'pct' : 'numero', field));
   }
 
-  // The model minus the columns hidden with "Colunas" — a download holds
-  // what the tab shows.
-  function semOcultas(modelo, ocultas) {
-    const manter = modelo.cabecalho
-      .map((h, i) => (ocultas.includes(h) ? -1 : i))
-      .filter((i) => i >= 0);
-    return {
-      cabecalho: manter.map((i) => modelo.cabecalho[i]),
-      linhas: modelo.linhas.map((l) => manter.map((i) => l[i])),
-    };
-  }
-
   // 'Assistência %' → 'assistencia_pct', for file names.
   function slugAba(nome) {
     return nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -311,22 +297,22 @@
   // tab, zipped so it is still a single download (several at once make
   // Chrome ask for permission). Each CSV carries the BOM the single CSV
   // downloads do, so Excel reads the accents.
-  function baixarCsvs(abas, ocultas) {
+  function baixarCsvs(abas) {
     const { data, hora } = window.__municPro.timestampSlug();
     const enc = new TextEncoder();
     const bytes = window.__municProXlsx.zipStored(abas.map(({ nome, modelo }) => ({
       name: `munic2026_${slugAba(nome)}_${data}_${hora}.csv`,
-      data: enc.encode('\uFEFF' + csvDoModelo(semOcultas(modelo, ocultas))),
+      data: enc.encode('\uFEFF' + csvDoModelo(modelo)),
     })));
     window.__municPro.downloadFile(
       `munic2026_relatorio_csv_${data}_${hora}.zip`, bytes, 'application/zip',
       { bom: false });
   }
 
-  function baixarExcel(abas, ocultas) {
+  function baixarExcel(abas) {
     const { data, hora } = window.__municPro.timestampSlug();
     const bytes = window.__municProXlsx.workbook(abas.map(({ nome, modelo }) =>
-      ({ nome, ...semOcultas(modelo, ocultas) })));
+      ({ nome, ...modelo })));
     window.__municPro.downloadFile(
       `munic2026_relatorio_${data}_${hora}.xlsx`, bytes,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -543,74 +529,6 @@
     });
   }
 
-  // Date headings (fmtColumnHeader) are not offered for hiding: they roll
-  // over as runs come and go, so a saved one would soon match nothing.
-  const DATA_COLUNA = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/;
-
-  function rotulosCabecalho(tabela) {
-    return [...tabela.querySelectorAll('thead tr:first-child th')]
-      .map((th) => th.textContent);
-  }
-
-  // Hidden by CSS rather than DataTables' column().visible(): the filter
-  // row is ours, added after DataTables read the header, and nth-child
-  // hides its box together with the column's cells without DataTables
-  // having to know. Also correct on rows paged in later, and without
-  // DataTables at all.
-  function cssColunasOcultas(panelEl, ocultas) {
-    const regras = [];
-    panelEl.querySelectorAll('table').forEach((tbl, i) => {
-      tbl.setAttribute('data-munic-pro-pane', String(i));
-      rotulosCabecalho(tbl).forEach((rotulo, k) => {
-        if (!ocultas.includes(rotulo)) return;
-        regras.push(`.munic-pro-panel table[data-munic-pro-pane="${i}"] ` +
-          `tr > :nth-child(${k + 1}) { display: none; }`);
-      });
-    });
-    return regras.join('\n');
-  }
-
-  // A "Colunas" dropdown of checkboxes, one per non-date column name
-  // across every tab; unticking hides that name wherever it appears.
-  // `salvar` persists each change (the caller stores it beside the
-  // history); without one the dropdown still works, it just forgets.
-  function buildSeletorColunas(panelEl, ocultasIniciais, salvar) {
-    let ocultas = [...(ocultasIniciais || [])];
-    const estilo = el('style', { class: 'munic-pro-estilo-ocultas' });
-    const aplicar = () => {
-      estilo.textContent = cssColunasOcultas(panelEl, ocultas);
-    };
-
-    const rotulos = [];
-    panelEl.querySelectorAll('table').forEach((tbl) => {
-      for (const r of rotulosCabecalho(tbl)) {
-        if (!DATA_COLUNA.test(r) && !rotulos.includes(r)) rotulos.push(r);
-      }
-    });
-
-    const caixas = rotulos.map((rotulo) => {
-      const input = el('input', { type: 'checkbox' });
-      input.checked = !ocultas.includes(rotulo);
-      input.addEventListener('change', () => {
-        ocultas = input.checked
-          ? ocultas.filter((o) => o !== rotulo)
-          : [...ocultas, rotulo];
-        if (salvar) salvar(ocultas);
-        aplicar();
-      });
-      const label = el('label', {}, [input]);
-      label.appendChild(document.createTextNode(` ${rotulo}`));
-      return label;
-    });
-
-    aplicar();
-    return el('details', { class: 'munic-pro-colunas' }, [
-      el('summary', { text: 'Colunas' }),
-      ...caixas,
-      estilo,
-    ]);
-  }
-
   // Strict match: a row belongs to a UF only if its own id_uf says so.
   // Rows written before id_uf existed are no longer given the benefit of
   // the doubt — the decision is to clear that old data instead of
@@ -677,18 +595,10 @@
     ]);
     panel.appendChild(barra);
     for (const p of panes) panel.appendChild(p);
-    // After the panes are in: the selector reads their headers. The
-    // downloads leave out whatever is hidden at the moment they are made.
-    let ocultas = [...(data.colunasOcultas || [])];
-    barra.appendChild(buildSeletorColunas(panel, ocultas, (v) => {
-      ocultas = v;
-      if (data.salvarColunasOcultas) data.salvarColunasOcultas(v);
-    }));
-
     const excel = el('button', { type: 'button', text: 'Excel' });
-    excel.addEventListener('click', () => baixarExcel(abas, ocultas));
+    excel.addEventListener('click', () => baixarExcel(abas));
     const csvs = el('button', { type: 'button', text: 'CSV (.zip)' });
-    csvs.addEventListener('click', () => baixarCsvs(abas, ocultas));
+    csvs.addEventListener('click', () => baixarCsvs(abas));
     barra.appendChild(el('div', { class: 'munic-pro-downloads' }, [excel, csvs]));
 
     // A run that changed nothing gets no column (change #3) — without
@@ -884,15 +794,6 @@
       const porAgencia = AGG.groupCountsByColumn(
         allRows, ['agencia_nome'], columns);
 
-      // A failed read shows every column rather than no panel.
-      const PREF_OCULTAS = 'colunas-ocultas';
-      let colunasOcultas = [];
-      try {
-        colunasOcultas = (await STORE.getPref(PREF_OCULTAS)) || [];
-      } catch (err) {
-        console.warn(`${TAG} colunas ocultas indisponíveis:`, err);
-      }
-
       const panel = buildPanel({
         grid: AGG.municipioGrid(allRows, columns),
         columns,
@@ -903,9 +804,6 @@
         warnings: runs[runs.length - 1].warnings || [],
         lastRun: runs[runs.length - 1].run_ts,
         lastRunChanged: (runs[runs.length - 1].n_changed || 0) > 0,
-        colunasOcultas,
-        salvarColunasOcultas: (v) => STORE.setPref(PREF_OCULTAS, v)
-          .catch((err) => console.warn(`${TAG} não foi possível salvar:`, err)),
       });
 
       const card = bar.closest('.card') || bar.parentElement.parentElement;
@@ -971,13 +869,10 @@
     renderGroupTab,
     modeloMunicipio,
     modeloGrupo,
-    semOcultas,
     csvDoModelo,
     slugAba,
     buildPanel,
     alargarPainel,
-    cssColunasOcultas,
-    buildSeletorColunas,
     actionsAnchor,
     PAGE_BUTTON_IDS,
     ANCHOR_ID,
