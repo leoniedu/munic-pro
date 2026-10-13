@@ -853,7 +853,8 @@
       const idUfAtual = ufSelecionada === '' ? NaN : Number(ufSelecionada);
       const filtrarPorUf = (rows) => filtrarLinhasPorUf(rows, idUfAtual);
 
-      const allRows = filtrarPorUf(await STORE.getAll());
+      const { conformeRcd31 } = window.__municProAssistencias;
+      const allRows = conformeRcd31(filtrarPorUf(await STORE.getAll()));
       const runs = filtrarPorUf(await STORE.getRuns());
       if (!runs.length) { say('Sem histórico ainda.'); return; }
 
@@ -933,12 +934,14 @@
     const csv = makeButton('CSV-PRO', async () => {
       const STORE = window.__municProSituacaoStore;
       window.__municProSituacaoExport.downloadDenormalizedCsv(
-        await STORE.getAll(), await STORE.getRuns());
+        window.__municProAssistencias.conformeRcd31(await STORE.getAll()),
+        await STORE.getRuns());
     });
 
     // The JSON snapshot used to download on every fetch. That put a file
     // in Downloads each time the colleague opened the report, which is
-    // noise — it is a backup, taken when you want one.
+    // noise — it is a backup, taken when you want one. Raw, without the
+    // RCD 31 agências: it has to restore exactly what SIGC sent.
     const backup = makeButton('Backup JSON', async () => {
       const STORE = window.__municProSituacaoStore;
       window.__municProSituacaoExport.downloadSnapshot(

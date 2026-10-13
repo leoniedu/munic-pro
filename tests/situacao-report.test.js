@@ -420,6 +420,38 @@ describe('buildActions — Relatório panel placement', () => {
     expect(naoIniciadoCells).toEqual(['1', '0']);
     expect(concluidoCells).toEqual(['0', '1']);
   });
+
+  // SIGC puts Cipó under CIPÓ; RCD 31 under RIBEIRA DO POMBAL.
+  test('Relatório panel groups by the RCD 31 agência, not SIGC', async () => {
+    window.__municProSituacaoStore = {
+      getAll: async () => [
+        { uf_sigla: 'BA', municipio_codigo: '2907905', municipio_nome: 'Cipó',
+          agencia_codigo: '290790500', agencia_nome: 'CIPÓ',
+          questionario: 'Básico', situacao: 'Concluído',
+          from_ts: '2026-09-07T09:00:00', until_ts: null },
+      ],
+      getRuns: async () => [
+        { run_ts: '2026-09-07T09:00:00', warnings: [], n_changed: 1 },
+      ],
+    };
+
+    const root = document.createElement('div');
+    const grandparent = document.createElement('div');
+    const parent = document.createElement('div');
+    root.appendChild(grandparent);
+    grandparent.appendChild(parent);
+    const bar = window.__municProSituacaoReport.buildActions();
+    parent.appendChild(bar);
+
+    [...bar.querySelectorAll('a')]
+      .find((a) => a.textContent === 'Relatório-PRO').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const panel = root.querySelector('.munic-pro-panel');
+    expect(panel.textContent).toContain('RIBEIRA DO POMBAL');
+    expect(panel.textContent).not.toContain('CIPÓ');
+  });
 });
 
 describe('button styling and placement', () => {
