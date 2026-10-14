@@ -38,11 +38,17 @@ describe('conformeRcd31', () => {
   });
 
   // RCD 31 splits Salvador across SALVADOR 1 and 2, but SIGC has a single
-  // row per questionário — there is no single agência to pick.
-  test('leaves Salvador as SIGC reports it', () => {
-    const [r] = A.conformeRcd31([row('2927408', '292740800', 'SALVADOR')]);
+  // row per questionário — there is no single agência to pick, so the
+  // código stays SIGC's and only the name follows RCD 31.
+  test('keeps Salvador on its SIGC agência, named as in RCD 31', () => {
+    const [r] = A.conformeRcd31([row('2927408', '292740800', 'SALVADOR I')]);
     expect(r.agencia_codigo).toBe('292740800');
-    expect(r.agencia_nome).toBe('SALVADOR');
+    expect(r.agencia_nome).toBe('SALVADOR 1');
+  });
+
+  test('leaves an agência código unknown to RCD 31 as SIGC reports it', () => {
+    const [r] = A.conformeRcd31([row('2927408', '999999999', 'NOVA')]);
+    expect(r.agencia_nome).toBe('NOVA');
   });
 
   test('leaves municípios outside RCD 31 untouched', () => {

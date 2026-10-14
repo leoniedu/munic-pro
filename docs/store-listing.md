@@ -37,7 +37,7 @@ do tempo. Esta extensão guarda o que o SIGC não guarda.
   - Agência e Agência % — o mesmo, agrupado por agência.
   Na Bahia, a agência de cada município segue a RCD 31 (tabela também
   embutida na extensão), não o SIGC, que diverge em alguns municípios;
-  Salvador fica como o SIGC informa.
+  Salvador fica na agência que o SIGC informa, com o nome da RCD 31.
   Todas as tabelas têm ordenação, paginação, busca geral e um filtro por
   coluna, usando o jQuery/DataTables que a própria página do SIGC já
   carrega — nada é baixado ou embutido para isso. A tabela rola na

@@ -35,7 +35,8 @@ agencias <- orcedata::agencias_bdo |>
   dplyr::transmute(chave = chave(agencia_nome), agencia_codigo, agencia_nome)
 
 # Salvador is split across SALVADOR 1 and 2 in RCD 31, but SIGC has one row
-# per questionário, so there is no single agência to replace it with.
+# per questionário, so there is no single agência to replace it with; it
+# keeps SIGC's código and takes the RCD 31 name for it.
 rcd <- readr::read_csv(rcd_path, col_types = "ccc") |>
   dplyr::filter(municipio_codigo != "2927408") |>
   dplyr::transmute(municipio_codigo, chave = chave(agencia_nome)) |>
@@ -78,14 +79,20 @@ lines <- c(
   rcd_entries,
   "  };",
   "",
+  "  // Salvador keeps its SIGC código, but SIGC spells some names apart from",
+  "  // RCD 31 (\"SALVADOR I\" vs \"SALVADOR 1\"); naming by código keeps one",
+  "  // agência from showing up twice.",
+  "  const NOME_RCD31_POR_AGENCIA = Object.fromEntries(",
+  "    Object.values(AGENCIA_RCD31_POR_MUNICIPIO));",
+  "",
   "  // SIGC assigns some municípios to the wrong agência. Applied when rows",
   "  // are read, never when stored, so the history keeps what SIGC sent.",
   "  function conformeRcd31(rows) {",
   "    return rows.map((r) => {",
   "      const rcd = AGENCIA_RCD31_POR_MUNICIPIO[String(r.municipio_codigo)];",
-  "      return rcd",
-  "        ? { ...r, agencia_codigo: rcd[0], agencia_nome: rcd[1] }",
-  "        : r;",
+  "      if (rcd) return { ...r, agencia_codigo: rcd[0], agencia_nome: rcd[1] };",
+  "      const nome = NOME_RCD31_POR_AGENCIA[String(r.agencia_codigo)];",
+  "      return nome ? { ...r, agencia_nome: nome } : r;",
   "    });",
   "  }",
   "",

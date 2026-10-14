@@ -52,7 +52,8 @@ O painel ocupa a largura da janela e tem até cinco abas:
 - **Agência** e **Agência %**.
 
 Na Bahia, a agência de cada município segue a RCD 31, não o SIGC (que
-diverge em alguns municípios); Salvador fica como o SIGC informa. O painel
+diverge em alguns municípios); Salvador fica na agência que o SIGC informa,
+com o nome da RCD 31 (SALVADOR 1, não SALVADOR I). O painel
 e o CSV-PRO usam a RCD 31; o Backup JSON guarda o que o SIGC enviou.
 
 A tabela rola na horizontal dentro do painel. **Excel** baixa todas

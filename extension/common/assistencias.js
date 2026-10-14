@@ -484,14 +484,20 @@
     '2933604': ['293360400', 'XIQUE-XIQUE'],
   };
 
+  // Salvador keeps its SIGC código, but SIGC spells some names apart from
+  // RCD 31 ("SALVADOR I" vs "SALVADOR 1"); naming by código keeps one
+  // agência from showing up twice.
+  const NOME_RCD31_POR_AGENCIA = Object.fromEntries(
+    Object.values(AGENCIA_RCD31_POR_MUNICIPIO));
+
   // SIGC assigns some municípios to the wrong agência. Applied when rows
   // are read, never when stored, so the history keeps what SIGC sent.
   function conformeRcd31(rows) {
     return rows.map((r) => {
       const rcd = AGENCIA_RCD31_POR_MUNICIPIO[String(r.municipio_codigo)];
-      return rcd
-        ? { ...r, agencia_codigo: rcd[0], agencia_nome: rcd[1] }
-        : r;
+      if (rcd) return { ...r, agencia_codigo: rcd[0], agencia_nome: rcd[1] };
+      const nome = NOME_RCD31_POR_AGENCIA[String(r.agencia_codigo)];
+      return nome ? { ...r, agencia_nome: nome } : r;
     });
   }
 
